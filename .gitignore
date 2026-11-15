@@ -1,0 +1,7 @@
+node_modules/
+dist/
+preview/
+test-results/
+*.tsbuildinfo
+.env
+.env.*
