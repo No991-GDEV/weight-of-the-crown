@@ -1,5 +1,6 @@
+import { openQuestCount, resultNarrative } from "./quests.js";
 import { activeCatalogChoices, featTrains, protectedRole } from "./feat-engine.js";
-import { ABILITIES, SKILLS, RESOURCES, RANKS, abilityTotal, proficiency, isRecord } from "./core.js";
+import { ABILITIES, SKILLS, RESOURCES, RANKS, DEGREE_LABELS, abilityTotal, proficiency, isRecord } from "./core.js";
 import { kingdomRoles, targetLabel } from "./roles.js";
 import { advancementAbility, effectiveRank, checkContributions, stackedContributionTotal, resourceSummary, currentWeek, questProgress, SEASONS, featureSlots } from "./management.js";
 import { ARMY_TYPES, CHARTERS, HEARTLANDS, GOVERNMENTS, originAdjustments, governmentSkills, militarySummary, normalizeMilitaryUnit, definitionOutcome } from "./realm-admin.js";
@@ -36,10 +37,15 @@ export function realmView(state, canEdit, isGM, extra = {}) {
     for (const run of Object.values(state.definitionRuns ?? {}))
         if (isRecord(run) && typeof run.definitionId === "string")
             runCounts.set(run.definitionId, (runCounts.get(run.definitionId) ?? 0) + 1);
-    const definitionView = (d, kind) => {
-        const q = questProgress(state, d.id, kind), outcome = definitionOutcome(d);
+    const definitionView = (d, kind, archived = false) => {
+        const q = archived ? questProgress({ ...state, activityDefinitions: { [d.id]: d } }, d.id) : questProgress(state, d.id, kind), configured = definitionOutcome(d);
+        const outcome = q.status === "completed" ? { resources: q.grantedResources ?? {}, effects: {}, costs: {} } : configured;
         const pastRunsCount = runCounts.get(d.id) ?? 0;
-        return { ...d, repeatable: d.repeatable !== false, ...actorView(d.actorUuid), ...q, kind, key: `${kind}:${d.id}`, isProject: kind === "project", requiresCheck: d.requiresCheck !== false && !!d.skillId && d.dc !== null,
+        const responsible = q.status === "completed" && q.responsibleActorUuid !== undefined ? q.responsibleActorUuid : d.actorUuid;
+        const canAssign = !archived && q.status !== "completed" && (kind === "activity" ? (extra.canAssignQuests ?? canEdit) && (isGM || !d.actorUuid || !!extra.ownedActorUuids?.includes(d.actorUuid)) : canEdit);
+        return { ...d, archived, canAssign, openQuestCount: responsible && q.status !== "completed" ? `${openQuestCount(state, responsible)}/2` : null,
+            resultLabel: q.result ? DEGREE_LABELS[q.result] : "Resultado não informado", resultClass: q.result ?? "unreported", resultNarrative: q.resultText !== undefined ? q.resultText : resultNarrative(d, q.result),
+            repeatable: d.repeatable !== false, ...actorView(responsible), ...q, kind, key: `${kind}:${d.id}`, isProject: kind === "project", requiresCheck: d.requiresCheck !== false && !!d.skillId && d.dc !== null,
             skillLabel: SKILLS.find(s => s.id === d.skillId)?.label ?? "Sem teste", durationLabel: `${q.durationWeeks} ${q.durationWeeks === 1 ? "semana" : "semanas"}`, questStatus: { pending: "Pendente", inProgress: "Em andamento", completed: "Concluída" }[q.status], questPending: q.status === "pending", questCompleted: q.status === "completed", canComplete: q.status !== "completed" || !q.timeCounted,
             pastRunsCount, pastRunsLabel: pastRunsCount ? `${pastRunsCount} ${pastRunsCount === 1 ? "execução anterior" : "execuções anteriores"}` : "",
             rewardLabels: RESOURCES.filter(r => (outcome.resources[r.id] ?? 0) > 0).map(r => ({ label: r.label, value: outcome.resources[r.id] })),
@@ -47,6 +53,17 @@ export function realmView(state, canEdit, isGM, extra = {}) {
             effectCount: Object.keys(outcome.effects).length, effectCountLabel: `${Object.keys(outcome.effects).length} ${Object.keys(outcome.effects).length === 1 ? "efeito" : "efeitos"}`, outcomeEffects: Object.values(outcome.effects).map(e => ({ ...e, signed: signed(e.value), targetLabel: targetLabel(e.target, state) }))
         };
     };
+    const archivedDefinitions = Object.entries(state.definitionRuns ?? {}).flatMap(([runId, raw]) => {
+        if (!isRecord(raw) || !isRecord(raw.progress) || raw.progress.status !== "completed" || typeof raw.definitionId !== "string" || typeof raw.name !== "string")
+            return [];
+        const d = { id: raw.definitionId, name: raw.name, description: typeof raw.description === "string" ? raw.description : "", skillId: null, dc: null, suitability: 0, stages: "", benefit: "", quest: raw.progress };
+        try {
+            return [{ ...definitionView(d, "activity", true), key: `run:${runId}`, repeatable: false, canComplete: false, canAssign: false, archived: true }];
+        }
+        catch {
+            return [];
+        }
+    });
     const resourceInfo = resourceSummary(state);
     const army = militarySummary(state);
     const militaryUnits = Object.values(state.militaryUnits ?? {}).map(raw => {
@@ -126,7 +143,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
         canEdit, isGM, attributes, skills, roles, occupiedRoles: roles.filter(r => r.occupied).length, roleCount: roles.length,
         resources: RESOURCES.map(r => ({ ...r, value: state.resources[r.id] ?? "", path: `resources.${r.id}` })),
         actions: Object.values(state.activityDefinitions).map(d => definitionView(d, "activity")).filter(d => !d.questCompleted), projects: Object.values(state.projects).map(d => definitionView(d, "project")).filter(d => !d.questCompleted),
-        completedDefinitions: [...Object.values(state.activityDefinitions).map(d => definitionView(d, "activity")), ...Object.values(state.projects).map(d => definitionView(d, "project"))].filter(d => d.questCompleted),
+        completedDefinitions: [...Object.values(state.activityDefinitions).map(d => definitionView(d, "activity")), ...Object.values(state.projects).map(d => definitionView(d, "project"))].filter(d => d.questCompleted).concat(archivedDefinitions),
         operations,
         skillGroups: ABILITIES.map(a => ({ ...a, skills: skills.filter(s => s.abilityId === a.id) })),
         allocationCount: Object.values(state.creation.attributeAllocations).reduce((sum, n) => sum + (n ?? 0), 0),

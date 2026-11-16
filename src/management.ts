@@ -20,7 +20,7 @@ export interface KingdomFeat {
 export type FeatureKind = "feat" | "skill" | "abilities";
 export interface FeatureSlot { id: string; level: number; kind: FeatureKind; }
 export interface FeatureChoice { slotId: string; level: number; kind: FeatureKind; featId?: string; featName?: string; featSkillId?: SkillId; featRoleId?: string; skillId?: SkillId; abilityIds?: AbilityId[]; at: string; userId: string; }
-export interface QuestProgress { durationWeeks: number; status: "pending" | "inProgress" | "completed"; startWeek: number | null; completionWeek: number | null; timeCounted: boolean; countedWeeks?: number; benefitsApplied?: boolean; grantedResources?: Record<string, number>; runId?: string; result?: import("./core.js").Degree; }
+export interface QuestProgress { durationWeeks: number; status: "pending" | "inProgress" | "completed"; startWeek: number | null; completionWeek: number | null; timeCounted: boolean; countedWeeks?: number; benefitsApplied?: boolean; grantedResources?: Record<string, number>; runId?: string; result?: import("./core.js").Degree | null; resultText?:string; responsibleActorUuid?:string|null; }
 export interface CheckContribution { originId: string; label: string; value: number; type: EffectType; source: "role" | "feat" | "season" | "effect" | "building" | "quest"; }
 export const featureSlots = (level: number): FeatureSlot[] => [
   ...(level >= 2 && level % 2 === 0 ? [{ id: `level_${level}_feat`, level, kind: "feat" as const }] : []),
@@ -188,8 +188,10 @@ export const currentWeek = (state: RealmState): number => requireInteger(state.c
 export function questProgress(state: RealmState, questId: string, kind: "activity" | "project" = "activity"): QuestProgress {
   const definition = (kind === "activity" ? state.activityDefinitions : state.projects)[questId]; if (!definition) throw new Error("Quest ou construção não encontrada.");
   const q = definition.quest ?? { durationWeeks: 1, status: "pending", startWeek: null, completionWeek: null, timeCounted: false };
-  exact(q, ["durationWeeks", "status", "startWeek", "completionWeek", "timeCounted", "countedWeeks", "benefitsApplied", "grantedResources", "runId", "result"], "Quest");
-  if (q.result !== undefined && !["criticalFailure","failure","success","criticalSuccess"].includes(q.result)) throw new Error("Resultado da Quest inválido.");
+  exact(q, ["durationWeeks", "status", "startWeek", "completionWeek", "timeCounted", "countedWeeks", "benefitsApplied", "grantedResources", "runId", "result", "resultText", "responsibleActorUuid"], "Quest");
+  if (q.result !== undefined && q.result!==null && !["criticalFailure","failure","success","criticalSuccess"].includes(q.result)) throw new Error("Resultado da Quest inválido.");
+  if(q.resultText!==undefined)boundedText(q.resultText,"Texto do resultado",12000);
+  if(q.responsibleActorUuid!==undefined&&q.responsibleActorUuid!==null&&typeof q.responsibleActorUuid!=="string")throw new Error("Responsável da conclusão inválido.");
   if (q.benefitsApplied !== undefined && typeof q.benefitsApplied !== "boolean") throw new Error("Benefício de conclusão inválido.");
   if (q.runId !== undefined) safeId(q.runId);
   if (q.grantedResources !== undefined) { if (!isRecord(q.grantedResources)) throw new Error("Recursos recebidos inválidos."); for (const [id, amount] of Object.entries(q.grantedResources)) { if (!RESOURCES.some(r => r.id === id)) throw new Error("Recurso recebido desconhecido."); requireInteger(amount, "Alteração aplicada", -100000, 100000); } }

@@ -1,6 +1,7 @@
+import { QUEST_RESULT_FIELDS, resultNarrative, assertQuestCapacity } from "./quests.js";
 import { applyFeatCommand, applyQuestFeatRewards, settleFeatIncome, normalizeFeatTags } from "./feat-engine.js";
 import { MODULE_ID, RULES_VERSION, ABILITIES, SKILLS, isRecord, normalizeField, normalizeDefinition, readPath, requireInteger, assertRealm } from "./core.js";
-import { auditEntry, getState, requireEditor, requireGM } from "./adapter.js";
+import { auditEntry, getState, requireCommandAccess, requireGM } from "./adapter.js";
 import { kingdomRoles, normalizeRole, safeId, validateActorUuid } from "./roles.js";
 import { currentWeek, makeFeatureChoice, normalizeCheckEffect, normalizeFeat, questProgress, SEASONS, validateClearFeatureChoice, validateImagePath, validateResourceChange, resourceSummary } from "./management.js";
 import { GOVERNMENTS, normalizeOrigin, initialGovernmentFeat, normalizeOutcome, definitionOutcome, normalizeMilitaryUnit } from "./realm-admin.js";
@@ -8,7 +9,7 @@ const queues = new Map();
 let externalRegistryQueue = Promise.resolve();
 /** Apenas comandos que precisam validar o estado conjunto. Edições ordinárias mantêm última gravação por campo. */
 export async function executeRealmCommand(actor, user, raw, operationId, dependencies = {}) {
-    requireEditor(actor, user);
+    requireCommandAccess(actor, user, raw);
     safeId(operationId);
     const queueKey = actor.id;
     const previous = queues.get(queueKey) ?? Promise.resolve();
@@ -33,7 +34,7 @@ export async function executeRealmCommand(actor, user, raw, operationId, depende
         await deliverTask(actor, user, pending, dependencies);
 }
 async function apply(actor, user, raw, operationId, dependencies) {
-    requireEditor(actor, user);
+    requireCommandAccess(actor, user, raw);
     if (!isRecord(raw) || typeof raw.action !== "string")
         throw new Error("Operação de reino inválida.");
     const c = raw;
@@ -287,9 +288,15 @@ async function apply(actor, user, raw, operationId, dependencies) {
             gm();
             keys(["kind", "definitionId", "fields", "outcome", "durationWeeks", "featTags", "repeatable"]);
             safeId(c.definitionId);
-            if (c.kind !== "activity" && c.kind !== "project" || !isRecord(c.fields) || Object.entries(c.fields).some(([key, value]) => !["name", "description", "skillId", "dc", "suitability", "stages", "benefit", "requiresCheck"].includes(key) || typeof value !== "string"))
+            if (c.kind !== "activity" && c.kind !== "project" || !isRecord(c.fields) || Object.entries(c.fields).some(([key, value]) => !["name", "description", "skillId", "dc", "suitability", "stages", "benefit", "requiresCheck", ...QUEST_RESULT_FIELDS].includes(key) || typeof value !== "string"))
                 throw new Error("Campos de definição inválidos.");
             const collection = c.kind === "activity" ? "activityDefinitions" : "projects";
+            const previousDefinition = state[collection][c.definitionId];
+            const previousProgress = previousDefinition ? questProgress(state, c.definitionId, c.kind) : null;
+            if (previousProgress?.status === "completed" && previousProgress.resultText === undefined) {
+                previousProgress.resultText = resultNarrative(previousDefinition, previousProgress.result);
+                set(`${collection}.${c.definitionId}.quest`, previousProgress);
+            }
             const definition = normalizeDefinition(c.fields, c.definitionId, c.kind);
             for (const [field, value] of Object.entries(definition))
                 set(`${collection}.${c.definitionId}.${field}`, value);
@@ -329,20 +336,33 @@ async function apply(actor, user, raw, operationId, dependencies) {
             if (c.kind !== "activity" && c.kind !== "project")
                 throw new Error("Tipo de atividade inválido.");
             validateActorUuid(c.actorUuid);
-            if (c.actorUuid && dependencies.resolveActor) {
-                const linked = await dependencies.resolveActor(c.actorUuid);
-                if (!linked || linked.documentName !== "Actor" || !["character", "npc"].includes(linked.type) || linked.uuid !== c.actorUuid)
+            const collection = c.kind === "activity" ? "activityDefinitions" : "projects", def = state[collection][c.definitionId];
+            if (!def)
+                throw new Error("Atividade não encontrada.");
+            const resolve = async (uuid) => {
+                const linked = await dependencies.resolveActor?.(uuid);
+                if (!linked || linked.documentName !== "Actor" || !["character", "npc"].includes(linked.type) || linked.uuid !== uuid)
                     throw new Error("Selecione um personagem ou NPC existente.");
+                return linked;
+            };
+            if (c.kind === "activity" && !user.isGM) {
+                if (questProgress(state, def.id).status === "completed")
+                    throw new Error("Somente Quests abertas podem receber seu personagem.");
+                if (def.actorUuid && !(await resolve(def.actorUuid)).testUserPermission(user, 3))
+                    throw new Error("Este responsável só pode ser trocado pelo Mestre ou por seu controlador.");
+                if (c.actorUuid && !(await resolve(c.actorUuid)).testUserPermission(user, 3))
+                    throw new Error("Você só pode vincular personagens ou NPCs que controla.");
+            }
+            else if (c.actorUuid) {
+                const linked = await resolve(c.actorUuid);
                 if (!user.isGM && !linked.testUserPermission(user, 2))
                     throw new Error("Você não tem acesso a esse personagem.");
             }
-            const collection = c.kind === "activity" ? "activityDefinitions" : "projects";
-            const def = state[collection][c.definitionId];
-            if (!def)
-                throw new Error("Atividade não encontrada.");
             if ((def.actorUuid ?? null) === c.actorUuid)
                 return [];
-            path = `${collection}.${c.definitionId}.actorUuid`;
+            if (c.kind === "activity" && questProgress(state, def.id).status !== "completed")
+                assertQuestCapacity(state, c.actorUuid, def.id);
+            path = `${collection}.${def.id}.actorUuid`;
             before = def.actorUuid ?? null;
             after = c.actorUuid;
             kind = "field";
@@ -585,8 +605,12 @@ async function apply(actor, user, raw, operationId, dependencies) {
             q.completionWeek = q.status === "completed" ? currentWeek(state) : null;
             if (q.status !== "pending")
                 q.startWeek ??= currentWeek(state);
-            if (q.status === "completed")
+            if (q.status === "completed") {
                 q.benefitsApplied = true;
+                q.resultText ??= resultNarrative(state.projects[c.projectId], q.result);
+                if (q.responsibleActorUuid === undefined)
+                    q.responsibleActorUuid = state.projects[c.projectId].actorUuid ?? null;
+            }
             set(`projects.${c.projectId}.quest`, q);
             set(`projects.${c.projectId}.completionEffectsActive`, q.status === "completed");
             detail = "Estado da construção ajustado manualmente";
@@ -628,6 +652,10 @@ async function apply(actor, user, raw, operationId, dependencies) {
                 throw new Error("Uma Quest sem teste não produz sucesso crítico.");
             if (first && c.result !== undefined)
                 q.result = c.result;
+            if (q.resultText === undefined) {
+                q.resultText = resultNarrative(definition, q.result);
+                q.responsibleActorUuid = definition.actorUuid ?? null;
+            }
             q.startWeek ??= week;
             if (first) {
                 const outcome = definitionOutcome(definition);
@@ -642,6 +670,7 @@ async function apply(actor, user, raw, operationId, dependencies) {
                         if (current < amount)
                             throw new Error("Reservas insuficientes para pagar o custo.");
                         set(`resources.${resourceId}`, current - amount);
+                        q.grantedResources[resourceId] = -amount;
                     }
                 for (const [resourceId, amount] of Object.entries(outcome.resources).sort((a, b) => (a[1] ?? 0) - (b[1] ?? 0)))
                     if (amount) {
@@ -649,7 +678,7 @@ async function apply(actor, user, raw, operationId, dependencies) {
                         if (current === null)
                             throw new Error("Defina as reservas antes de receber a recompensa.");
                         set(`resources.${resourceId}`, requireInteger(current + amount, "Reserva após a recompensa", 0));
-                        q.grantedResources[resourceId] = amount;
+                        q.grantedResources[resourceId] = (q.grantedResources[resourceId] ?? 0) + amount;
                     }
                 validateResourceChange(state, trial);
                 set(`${collection}.${targetId}.completionEffectsActive`, true);
@@ -664,7 +693,7 @@ async function apply(actor, user, raw, operationId, dependencies) {
             q.status = "completed";
             q.completionWeek ??= c.advance ? currentWeek(trial) : week;
             if (first && defKind === "activity") {
-                const extra = applyQuestFeatRewards(trial, definition, q.result, q.runId, user.id);
+                const extra = applyQuestFeatRewards(trial, definition, q.result ?? undefined, q.runId, user.id);
                 if (extra)
                     q.grantedResources.res_treasury = (q.grantedResources.res_treasury ?? 0) + extra;
             }
@@ -675,16 +704,53 @@ async function apply(actor, user, raw, operationId, dependencies) {
         }
         case "quest.repeat": {
             gm();
-            keys(["questId", "confirmed"]);
+            keys(["questId", "confirmed", "keepActor"]);
             safeId(c.questId);
             const q = questProgress(state, c.questId);
+            if (c.keepActor !== undefined && typeof c.keepActor !== "boolean")
+                throw new Error("Escolha de responsável inválida.");
             if (state.activityDefinitions[c.questId]?.repeatable === false)
                 throw new Error("Esta Quest não é repetível.");
             if (q.status !== "completed" || c.confirmed !== true)
                 throw new Error("Confirme uma nova execução de Quest concluída.");
-            set(`definitionRuns.${q.runId ?? `${operationId}_previous`}`, { definitionId: c.questId, name: state.activityDefinitions[c.questId].name, progress: q });
+            const definition = state.activityDefinitions[c.questId];
+            q.resultText ??= resultNarrative(definition, q.result);
+            if (q.responsibleActorUuid === undefined)
+                q.responsibleActorUuid = definition.actorUuid ?? null;
+            if (c.keepActor !== false)
+                assertQuestCapacity(state, definition.actorUuid ?? null, definition.id);
+            else
+                set(`activityDefinitions.${definition.id}.actorUuid`, null);
+            set(`definitionRuns.${q.runId ?? `${operationId}_previous`}`, { definitionId: c.questId, name: definition.name, description: definition.description, skillId: definition.skillId, dc: definition.dc, progress: q });
             set(`activityDefinitions.${c.questId}.quest`, { durationWeeks: q.durationWeeks, status: "pending", startWeek: null, completionWeek: null, timeCounted: false, benefitsApplied: false, runId: operationId });
+            for (const field of ["result", "resultText", "responsibleActorUuid", "grantedResources", "countedWeeks"])
+                set(`activityDefinitions.${c.questId}.quest.-=${field}`, null);
             detail = "Nova execução de Quest preparada";
+            category = "Quests e obras";
+            break;
+        }
+        case "quest.result": {
+            gm();
+            keys(["kind", "definitionId", "result"]);
+            safeId(c.definitionId);
+            if (c.kind !== "activity" && c.kind !== "project")
+                throw new Error("Tipo de definição inválido.");
+            if (c.result !== null && !["criticalFailure", "failure", "success", "criticalSuccess"].includes(String(c.result)))
+                throw new Error("Resultado inválido.");
+            const collection = c.kind === "activity" ? "activityDefinitions" : "projects", definition = state[collection][c.definitionId];
+            if (!definition)
+                throw new Error("Definição não encontrada.");
+            const q = questProgress(state, definition.id, c.kind);
+            if (q.status !== "completed")
+                throw new Error("Conclua a atividade antes de alterar seu resultado.");
+            if (c.result === "criticalSuccess" && definition.requiresCheck === false)
+                throw new Error("Uma Quest sem teste não produz sucesso crítico.");
+            q.result = c.result;
+            q.resultText = resultNarrative(definition, q.result);
+            if (q.responsibleActorUuid === undefined)
+                q.responsibleActorUuid = definition.actorUuid ?? null;
+            set(`${collection}.${definition.id}.quest`, q);
+            detail = "Resultado da conclusão atualizado";
             category = "Quests e obras";
             break;
         }

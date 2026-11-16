@@ -1,4 +1,4 @@
-import { MODULE_ID, RULES_VERSION, assertRealm, normalizeField, normalizeDefinition, readPath, type RealmState, type AuditEntry, type Definition } from "./core.js";
+import { MODULE_ID, RULES_VERSION, isRecord, assertRealm, normalizeField, normalizeDefinition, readPath, type RealmState, type AuditEntry, type Definition } from "./core.js";
 import { kingdomRoles, normalizeRole, safeId, validateActorUuid, type KingdomRole } from "./roles.js";
 import { validateResourceChange, validateAdvancement } from "./management.js";
 
@@ -17,6 +17,14 @@ export function getState(actor: PublicDocument): RealmState {
 }
 export function requireEditor(actor: PublicDocument, user: UserContext): void {
   if (!user.isGM && !actor.testUserPermission(user, 3)) throw new Error("Você não tem permissão para editar este reino.");
+}
+/** Self-assignment grants no other editing capability to a kingdom observer. */
+export function requireCommandAccess(actor:PublicDocument,user:UserContext,command:unknown):void{
+  if(isRecord(command)&&command.action==="binding.save"&&command.kind==="activity"){
+    if(user.isGM||actor.testUserPermission(user,2))return;
+    throw new Error("Você não tem acesso a este reino.");
+  }
+  requireEditor(actor,user);
 }
 export function requireGM(actor: PublicDocument, user: UserContext): void {
   if (!user.isGM) throw new Error("Somente o Mestre pode administrar definições do reino.");

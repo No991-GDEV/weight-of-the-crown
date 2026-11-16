@@ -1,4 +1,4 @@
-import { MODULE_ID, RULES_VERSION, assertRealm, normalizeField, normalizeDefinition, readPath } from "./core.js";
+import { MODULE_ID, RULES_VERSION, isRecord, assertRealm, normalizeField, normalizeDefinition, readPath } from "./core.js";
 import { kingdomRoles, normalizeRole, safeId, validateActorUuid } from "./roles.js";
 import { validateResourceChange, validateAdvancement } from "./management.js";
 export function getState(actor) {
@@ -11,6 +11,15 @@ export function getState(actor) {
 export function requireEditor(actor, user) {
     if (!user.isGM && !actor.testUserPermission(user, 3))
         throw new Error("Você não tem permissão para editar este reino.");
+}
+/** Self-assignment grants no other editing capability to a kingdom observer. */
+export function requireCommandAccess(actor, user, command) {
+    if (isRecord(command) && command.action === "binding.save" && command.kind === "activity") {
+        if (user.isGM || actor.testUserPermission(user, 2))
+            return;
+        throw new Error("Você não tem acesso a este reino.");
+    }
+    requireEditor(actor, user);
 }
 export function requireGM(actor, user) {
     if (!user.isGM)

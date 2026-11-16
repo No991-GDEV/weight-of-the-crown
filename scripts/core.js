@@ -1,3 +1,4 @@
+import { QUEST_DEGREES, normalizeResultTexts } from "./quests.js";
 import { validatePendingTasks } from "./pending.js";
 import { validateFeatState } from "./feat-engine.js";
 import { catalogFeats, CATALOG_VERSION } from "./feat-catalog.js";
@@ -7,8 +8,8 @@ import { originAbility, validateRealmAdmin } from "./realm-admin.js";
 /** Regras e estado independentes do DOM, Foundry e PF2e. Fase 5 / F5-001. */
 export const MODULE_ID = "weight-of-the-crown";
 export const SCHEMA_VERSION = "0.1.0";
-export const RULES_VERSION = "0.39.0";
-export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", RULES_VERSION];
+export const RULES_VERSION = "0.40.0";
+export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", RULES_VERSION];
 export const ABILITIES = [
     { id: "ability_government", label: "Governo" },
     { id: "ability_economy", label: "Economia" },
@@ -107,6 +108,8 @@ export function assertRealm(value) {
             if (def.dc !== null)
                 requireInteger(def.dc, "CD da definição", 1);
             requireInteger(def.suitability, "Adequação da definição", -2, 2);
+            if (def.resultTexts !== undefined)
+                normalizeResultTexts(def.resultTexts);
         }
     }
     kingdomRoles(value);
@@ -202,7 +205,7 @@ export function normalizeDefinition(raw, id, kind) {
     for (const key of ["description", "stages", "benefit"])
         if ((raw[key] ?? "").length > 12000)
             throw new Error("Texto muito longo.");
-    return { id, name, skillId: skillId, dc, suitability, ...(raw.requiresCheck !== undefined ? { requiresCheck } : {}), description: raw.description ?? "", stages: kind === "project" ? raw.stages ?? "" : "", benefit: raw.benefit ?? "" };
+    return { id, name, ...(QUEST_DEGREES.some(d => raw[`${d}Text`] !== undefined) ? { resultTexts: normalizeResultTexts(Object.fromEntries(QUEST_DEGREES.map(d => [d, raw[`${d}Text`] ?? ""]))) } : {}), skillId: skillId, dc, suitability, ...(raw.requiresCheck !== undefined ? { requiresCheck } : {}), description: raw.description ?? "", stages: kind === "project" ? raw.stages ?? "" : "", benefit: raw.benefit ?? "" };
 }
 export function escapeHTML(value) {
     return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);

@@ -241,9 +241,13 @@ export function questProgress(state, questId, kind = "activity") {
     if (!definition)
         throw new Error("Quest ou construção não encontrada.");
     const q = definition.quest ?? { durationWeeks: 1, status: "pending", startWeek: null, completionWeek: null, timeCounted: false };
-    exact(q, ["durationWeeks", "status", "startWeek", "completionWeek", "timeCounted", "countedWeeks", "benefitsApplied", "grantedResources", "runId", "result"], "Quest");
-    if (q.result !== undefined && !["criticalFailure", "failure", "success", "criticalSuccess"].includes(q.result))
+    exact(q, ["durationWeeks", "status", "startWeek", "completionWeek", "timeCounted", "countedWeeks", "benefitsApplied", "grantedResources", "runId", "result", "resultText", "responsibleActorUuid"], "Quest");
+    if (q.result !== undefined && q.result !== null && !["criticalFailure", "failure", "success", "criticalSuccess"].includes(q.result))
         throw new Error("Resultado da Quest inválido.");
+    if (q.resultText !== undefined)
+        boundedText(q.resultText, "Texto do resultado", 12000);
+    if (q.responsibleActorUuid !== undefined && q.responsibleActorUuid !== null && typeof q.responsibleActorUuid !== "string")
+        throw new Error("Responsável da conclusão inválido.");
     if (q.benefitsApplied !== undefined && typeof q.benefitsApplied !== "boolean")
         throw new Error("Benefício de conclusão inválido.");
     if (q.runId !== undefined)

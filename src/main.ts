@@ -62,13 +62,15 @@ export class RealmApplication extends HbsApplication {
     button.disabled=true;try{await submitRealmCommand(this.actor,{action:"operation.retry",taskId:button.dataset.taskId});this.status="Operação finalizada";}catch(e){notifyError(e);}finally{if(!this.closing)await this.render();}
   }
   get title(): string { return `${this.actor.name} · The Weight of the Crown`; }
+  get canAssignQuests():boolean{return game.user.isGM||this.actor.testUserPermission(game.user,2);}
   get canEdit(): boolean { return game.user.isGM || this.actor.testUserPermission(game.user, 3); }
   async _prepareContext(): Promise<Record<string, unknown>> {
     try {
       if (!game.user.isGM && !this.actor.testUserPermission(game.user, 2)) throw new Error("Você não tem acesso a este reino.");
       const state = getState(this.actor);
+      const completedUuids=[...Object.values(state.activityDefinitions),...Object.values(state.projects)].map(d=>d.quest?.responsibleActorUuid).concat(Object.values(state.definitionRuns??{}).map((r:any)=>r?.progress?.responsibleActorUuid)).filter((u):u is string=>typeof u==="string"&&!!u);
       const historyUuids = Object.values(state.operations).sort((a,b) => b.at.localeCompare(a.at)).slice(0,30).filter(o => o.path?.endsWith(".actorUuid") || o.path?.endsWith(".commanderUuid")).flatMap(o => [o.before, o.after]).filter((u): u is string => typeof u === "string" && !!u);
-      const uuids = [...new Set([...Object.values(state.activityDefinitions), ...Object.values(state.projects), ...kingdomRoles(state), ...Object.values(state.militaryUnits ?? {}).map(u => ({ actorUuid: u.commanderUuid }))].map(d => d.actorUuid).filter((u): u is string => !!u).concat(historyUuids))];
+      const uuids = [...new Set([...Object.values(state.activityDefinitions), ...Object.values(state.projects), ...kingdomRoles(state), ...Object.values(state.militaryUnits ?? {}).map(u => ({ actorUuid: u.commanderUuid }))].map(d => d.actorUuid).filter((u): u is string => !!u).concat(historyUuids,completedUuids))];
       const actors: Record<string, ActorPresentation> = {};
       await Promise.all(uuids.map(async uuid => {
         try {
@@ -80,7 +82,7 @@ export class RealmApplication extends HbsApplication {
       const availability = await this.roleAvailability(state);
       const armies:Record<string,any>={};
       await Promise.all((this.activeSection==="military"?Object.values(state.militaryUnits??{}):[]).map(async u=>{try{armies[u.id]=armyView(await resolveArmy(this.actor,u));}catch{armies[u.id]={armyMissing:true,armyActorUuid:u.armyActorUuid??null,ac:"—",hpCurrent:"—",hpMax:"—",routThreshold:"—",scouting:null,maneuver:null,morale:null,meleeAttack:null,rangedAttack:null,tactics:""};}}));
-      const context = realmView(state, this.canEdit, game.user.isGM, { actors, users, availability, armies });
+      const context = realmView(state, this.canEdit, game.user.isGM, { actors, users, availability, armies,canAssignQuests:this.canAssignQuests,ownedActorUuids:game.actors.filter((a:any)=>["character","npc"].includes(a.type)&&a.testUserPermission(game.user,3)).map((a:any)=>a.uuid) });
       // Não resolver nem criar documentos ou diálogos durante _prepareContext.
       if (game.user.isGM && this.activeSection === "private") {
         this.privateDocument ??= this.findPrivateDocument();
@@ -121,7 +123,7 @@ export class RealmApplication extends HbsApplication {
     if (this.dropListener) this.element.removeEventListener("drop", this.dropListener);
     this.dragOverListener = (event: Event) => {
       const slot = (event.target as Element)?.closest<HTMLElement>("[data-drop-definition], [data-drop-army]");
-      if (!slot || !this.canEdit || (slot.dataset.dropKind === "military" || slot.hasAttribute("data-drop-army")) && !game.user.isGM) return;
+      if (!slot || !(slot.dataset.dropKind==="activity"?this.canAssignQuests:this.canEdit) || (slot.dataset.dropKind === "military" || slot.hasAttribute("data-drop-army")) && !game.user.isGM) return;
       event.preventDefault(); slot.classList.add("is-dragover");
       if ((event as DragEvent).dataTransfer) (event as DragEvent).dataTransfer!.dropEffect = "link";
     };
@@ -130,7 +132,7 @@ export class RealmApplication extends HbsApplication {
       const slot = (event.target as Element)?.closest<HTMLElement>("[data-drop-definition], [data-drop-army]");
       if (!slot) return;
       event.preventDefault(); event.stopPropagation(); slot.classList.remove("is-dragover");
-      if (!this.canEdit) return;
+      if (!(slot.dataset.dropKind==="activity"?this.canAssignQuests:this.canEdit)) return;
       void this.dropActor(event as DragEvent, slot).catch(notifyError);
     };
     this.element.addEventListener("dragover", this.dragOverListener);
@@ -146,7 +148,7 @@ export class RealmApplication extends HbsApplication {
   }
   async bindResponsible(kind: string | undefined, definitionId: string | undefined, uuid: string | null): Promise<void> {
     if (!definitionId || (kind !== "activity" && kind !== "project" && kind !== "role" && kind !== "military")) throw new Error("Selecione uma Quest, construção, cargo ou unidade.");
-    if (!this.canEdit) throw new Error("Você não tem permissão para editar este reino.");
+    if (!(kind==="activity"?this.canAssignQuests:this.canEdit)) throw new Error("Você não tem permissão para editar este reino.");
     if (kind === "military" && !game.user.isGM) throw new Error("Somente o Mestre escolhe o capitão.");
     const state = getState(this.actor);
     let currentUuid: string | null | undefined;
@@ -192,9 +194,9 @@ export class RealmApplication extends HbsApplication {
     await this.bindResponsible(slot.dataset.dropKind, slot.dataset.dropDefinition, actor.uuid);
   }
   static async chooseActor(this: RealmApplication, _event: Event, button: HTMLElement): Promise<void> {
-    if (!this.canEdit) return;
+    if (!(button.dataset.kind==="activity"?this.canAssignQuests:this.canEdit)) return;
     try {
-      const actors = game.actors.filter((a: any) => ["character", "npc"].includes(a.type) && (game.user.isGM || a.testUserPermission(game.user, 2))).sort((a: any, b: any) => a.name.localeCompare(b.name));
+      const actors = game.actors.filter((a: any) => ["character", "npc"].includes(a.type) && (game.user.isGM || a.testUserPermission(game.user,button.dataset.kind==="activity"?3:2))).sort((a: any, b: any) => a.name.localeCompare(b.name));
       if (!actors.length) { ui.notifications.info("Nenhum personagem ou NPC disponível."); return; }
       const options = actors.map((a: any) => `<option value="${escapeHTML(a.uuid)}">${escapeHTML(a.name)}</option>`).join("");
       const answer = await DialogV2.input({ window: { title: "Escolher responsável" }, content: `<label>Personagem<select name="actorUuid">${options}</select></label>`, ok: { label: "Vincular" }, rejectClose: false });
@@ -204,7 +206,7 @@ export class RealmApplication extends HbsApplication {
   static async openActor(this: RealmApplication, _event: Event, button: HTMLElement): Promise<void> {
     try {
       const state = getState(this.actor), collection = button.dataset.kind === "military" ? Object.fromEntries(Object.values(state.militaryUnits ?? {}).map(u => [u.id, { actorUuid: u.commanderUuid }])) : button.dataset.kind === "role" ? Object.fromEntries(kingdomRoles(state).map(r => [r.id, r])) : button.dataset.kind === "project" ? state.projects : state.activityDefinitions;
-      const uuid = collection[button.dataset.id ?? ""]?.actorUuid;
+      const uuid = button.dataset.actorUuid??collection[button.dataset.id ?? ""]?.actorUuid;
       if (uuid) (await this.resolveResponsible(uuid)).sheet.render(true);
     } catch (error) { notifyError(error); }
   }

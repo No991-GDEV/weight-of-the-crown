@@ -428,3 +428,21 @@
 .twoc-army-drop{padding:12px;margin-bottom:12px;border:1px dashed #bca9b0;border-radius:5px;text-align:center;color:#7e6876;font-size:12px}.twoc-army-drop.is-dragover{background:#efe3cf;border-color:#713b4a}
 
 .twoc-pending-tasks{border:1px solid var(--twoc-border,#c8b7a4);padding:10px 14px;margin-bottom:14px;border-radius:5px;background:#f5ead8}.twoc-pending-tasks>div{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:6px}.twoc-pending-tasks button{width:auto;flex:0 0 auto}
+
+/* Quest summaries: assignment remains visible next to the DC, even while collapsed. */
+.twoc-task-summary-tools{flex-wrap:wrap;justify-content:flex-end;align-items:center}
+.twoc-quest-assignee{display:inline-flex;align-items:center;gap:5px;min-height:30px;max-width:164px;padding:2px 4px;border:1px solid #d8c8b9;border-radius:4px;background:#f6f2ec;flex:0 1 auto}
+.twoc-quest-assignee[data-drop-definition]:not(.has-actor){border-style:dashed}
+.twoc-quest-assignee.is-dragover{outline:2px solid #754151;background:#eae0d5}
+.twoc .twoc-quest-portrait{display:flex;align-items:center;justify-content:center;flex:0 0 26px;width:26px;height:26px;min-height:0;padding:0;border:0;background:#e8e0d7;overflow:hidden;border-radius:3px;line-height:1}
+.twoc-quest-portrait img{width:26px;height:26px;object-fit:cover;border:0}
+.twoc-quest-assignee-name{font-size:10px;line-height:1.2;max-width:91px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.twoc-quest-assignee-name small{display:block;font-size:9px;color:#7b6b76}
+.twoc .twoc-quest-drop{display:flex;align-items:center;gap:6px;min-height:26px;width:auto;border:0;background:none;padding:2px 4px;font-size:10px;line-height:1.2}
+.twoc .twoc-quest-unassign{width:18px;height:24px;min-height:0;padding:0;font-size:10px}
+.twoc-quest-unassigned{width:24px;text-align:center;color:#9d8b97}
+.twoc-result-badge{padding:2px 6px;border-radius:4px;font-weight:600;white-space:normal}
+.twoc-result-success{color:#36583c;background:#e6ede2}.twoc-result-criticalSuccess{color:#254c35;background:#d6e7db}.twoc-result-failure{color:#77501f;background:#f4e9d7}.twoc-result-criticalFailure{color:#853e42;background:#f0ddde}.twoc-result-unreported{color:#70636d;background:#ece7e2}
+.twoc-result-heading{display:inline-block;padding:3px 7px;border-radius:4px;font-size:12px}.twoc-completed-result p{margin:8px 0 0}
+.twoc-degree-editor{display:grid;gap:10px;border:1px solid #c9b8aa;border-radius:4px;padding:12px}.twoc-degree-editor>p{margin:0;font-size:11px}.twoc-degree-editor label{margin:0}
+@media(max-width:800px){.twoc-quest-assignee-name{max-width:65px}.twoc-quest-assignee{max-width:135px}}

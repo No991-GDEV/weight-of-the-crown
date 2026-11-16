@@ -1,3 +1,4 @@
+import { QUEST_DEGREES, normalizeResultTexts } from "./quests.js";
 import { validatePendingTasks, type PendingTask } from "./pending.js";
 import { validateFeatState, type FeatUse, type FeatIncome } from "./feat-engine.js";
 import { catalogFeats, CATALOG_VERSION } from "./feat-catalog.js";
@@ -7,8 +8,8 @@ import { originAbility, validateRealmAdmin, type OriginProfile, type CompletionO
 /** Regras e estado independentes do DOM, Foundry e PF2e. Fase 5 / F5-001. */
 export const MODULE_ID = "weight-of-the-crown";
 export const SCHEMA_VERSION = "0.1.0";
-export const RULES_VERSION = "0.39.0";
-export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", RULES_VERSION] as const;
+export const RULES_VERSION = "0.40.0";
+export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", RULES_VERSION] as const;
 export const ABILITIES = [
   { id: "ability_government", label: "Governo" },
   { id: "ability_economy", label: "Economia" },
@@ -53,6 +54,7 @@ export interface Definition {
   suitability: number;
   stages: string;
   benefit: string;
+  resultTexts?: Record<Degree,string>;
   actorUuid?: string | null;
   quest?: QuestProgress;
   requiresCheck?: boolean;
@@ -158,6 +160,7 @@ export function assertRealm(value: unknown): asserts value is RealmState {
       if (def.skillId !== null && !SKILLS.some(s => s.id === def.skillId)) throw new Error("Perícia da definição inválida.");
       if (def.dc !== null) requireInteger(def.dc, "CD da definição", 1);
       requireInteger(def.suitability, "Adequação da definição", -2, 2);
+      if(def.resultTexts!==undefined)normalizeResultTexts(def.resultTexts);
     }
   }
   kingdomRoles(value as unknown as RealmState);
@@ -228,7 +231,7 @@ export function normalizeDefinition(raw: Record<string, string>, id: string, kin
   const suitability = numericInput(raw.suitability ?? "", "Adequação", -2, 2);
   if (requiresCheck && dc === null || suitability === null) throw new Error("Informe CD e adequação definidas pelo Mestre.");
   for (const key of ["description", "stages", "benefit"]) if ((raw[key] ?? "").length > 12000) throw new Error("Texto muito longo.");
-  return { id, name, skillId: skillId as SkillId | null, dc, suitability, ...(raw.requiresCheck !== undefined ? { requiresCheck } : {}), description: raw.description ?? "", stages: kind === "project" ? raw.stages ?? "" : "", benefit: raw.benefit ?? "" };
+  return { id, name, ...(QUEST_DEGREES.some(d=>raw[`${d}Text`]!==undefined)?{resultTexts:normalizeResultTexts(Object.fromEntries(QUEST_DEGREES.map(d=>[d,raw[`${d}Text`]??""])))}:{}), skillId: skillId as SkillId | null, dc, suitability, ...(raw.requiresCheck !== undefined ? { requiresCheck } : {}), description: raw.description ?? "", stages: kind === "project" ? raw.stages ?? "" : "", benefit: raw.benefit ?? "" };
 }
 export function escapeHTML(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

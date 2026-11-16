@@ -1,3 +1,4 @@
+import { QUEST_DEGREES } from "./quests.js";
 import { resolveArmy, availableTactics, trainingCost } from "./army.js";
 import { CATALOG_TAGS } from "./feat-catalog.js";
 import { ABILITIES, SKILLS, RESOURCES, escapeHTML, abilityTotal, requireInteger } from "./core.js";
@@ -165,7 +166,7 @@ export class DefinitionEditor extends Base {
         const s = getState(realm.actor), d = (kind === "activity" ? s.activityDefinitions : s.projects)[this.definitionId], outcome = d ? definitionOutcome(d) : { resources: {}, effects: {}, costs: {} };
         this.repeatable = d?.repeatable ?? true;
         this.featTags = d?.featTags ? [...d.featTags] : [];
-        this.fields = { name: d?.name ?? "", description: d?.description ?? "", skillId: d?.skillId ?? "", dc: String(d?.dc ?? ""), suitability: String(d?.suitability ?? 0), stages: d?.stages ?? "", benefit: d?.benefit ?? "", requiresCheck: String(d ? d.requiresCheck !== false : kind === "activity") };
+        this.fields = { name: d?.name ?? "", description: d?.description ?? "", skillId: d?.skillId ?? "", dc: String(d?.dc ?? ""), suitability: String(d?.suitability ?? 0), stages: d?.stages ?? "", benefit: d?.benefit ?? "", ...Object.fromEntries(QUEST_DEGREES.map(degree => [`${degree}Text`, d?.resultTexts?.[degree] ?? ""])), requiresCheck: String(d ? d.requiresCheck !== false : kind === "activity") };
         this.costs = Object.fromEntries(RESOURCES.map(r => [r.id, String(outcome.costs?.[r.id] ?? 0)]));
         this.duration = String(d?.quest?.durationWeeks ?? 1);
         this.rewards = Object.fromEntries(RESOURCES.map(r => [r.id, String((outcome.resources[r.id] ?? 0) - (outcome.costs?.[r.id] ?? 0))]));
@@ -308,8 +309,18 @@ export async function expansionAction(realm, button) {
                 await submitRealmCommand(realm.actor, { action: "military.delete", unitId: unit.id, confirmed: true, deleteActor: !!result.deleteActor });
         }
         else if (button.dataset.op === "questRepeat" && game.user.isGM) {
-            if (await DialogV2.confirm({ window: { title: "Nova execução" }, content: "<p>Preparar uma nova execução? A conclusão anterior ficará no histórico e não receberá outra recompensa.</p>", rejectClose: false }))
-                await submitRealmCommand(realm.actor, { action: "quest.repeat", questId: button.dataset.id, confirmed: true });
+            const definition = getState(realm.actor).activityDefinitions[button.dataset.id];
+            const answer = await DialogV2.input({ classes: ["twoc", "twoc-role-dialog"], window: { title: "Nova execução" }, content: `<p>A conclusão anterior ficará em Concluídas. Preparar outra execução?</p>${definition?.actorUuid ? '<label class="twoc-checkbox"><input type="checkbox" name="keepActor" checked>Manter o responsável atual (usa uma das duas vagas)</label>' : ""}`, ok: { label: "Preparar execução" }, rejectClose: false });
+            if (answer)
+                await submitRealmCommand(realm.actor, { action: "quest.repeat", questId: button.dataset.id, confirmed: true, keepActor: !!definition?.actorUuid && !!answer.keepActor });
+        }
+        else if (button.dataset.op === "questResult" && game.user.isGM && button.dataset.id) {
+            const kind = button.dataset.kind === "project" ? "project" : "activity", definition = (kind === "project" ? getState(realm.actor).projects : getState(realm.actor).activityDefinitions)[button.dataset.id];
+            if (!definition)
+                return;
+            const answer = await DialogV2.input({ classes: ["twoc", "twoc-role-dialog"], window: { title: "Resultado da conclusão" }, content: `<label>Resultado<select name="result">${option("", "Resultado não informado", definition.quest?.result ?? "")}${QUEST_DEGREES.filter(d => d !== "criticalSuccess" || definition.requiresCheck !== false).map(d => option(d, ({ criticalSuccess: "Sucesso crítico", success: "Sucesso", failure: "Falha", criticalFailure: "Falha crítica" })[d], definition.quest?.result)).join("")}</select></label>`, ok: { label: "Salvar resultado" }, rejectClose: false });
+            if (answer)
+                await submitRealmCommand(realm.actor, { action: "quest.result", kind, definitionId: definition.id, result: answer.result ? String(answer.result) : null });
         }
         else if (button.dataset.op === "projectStatus" && game.user.isGM && button.dataset.id) {
             const q = questProgress(getState(realm.actor), button.dataset.id, "project");
