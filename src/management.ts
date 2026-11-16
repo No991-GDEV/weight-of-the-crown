@@ -1,7 +1,7 @@
 import { featTrains, catalogContributions, protectedRole } from "./feat-engine.js";
 import { catalogKey } from "./feat-catalog.js";
 import { ABILITIES, RESOURCES, SKILLS, RANKS, isRecord, requireInteger, type AbilityId, type Rank, type RealmState, type SkillId } from "./core.js";
-import { safeId, validateTarget, targetMatches, roleModifiers, kingdomRoles, type ActorAvailability, type RoleTarget } from "./roles.js";
+import { safeId, validateTarget, targetMatches, roleModifiers, kingdomRoles, type ActorAvailability, type EffectTarget } from "./roles.js";
 import { governmentSkills, governmentFeat, originAbility } from "./realm-admin.js";
 
 export const SEASONS = [
@@ -11,7 +11,7 @@ export const SEASONS = [
 export type Season = typeof SEASONS[number]["id"];
 export type EffectType = "untyped" | "circumstance" | "status" | "item";
 export const EFFECT_TYPES = [{ id: "untyped", label: "Reino (sem tipo)" }, { id: "circumstance", label: "Circunstância" }, { id: "status", label: "Estado" }, { id: "item", label: "Item" }] as const;
-export interface CheckEffect { id: string; name: string; description: string; type: EffectType; value: number; target: RoleTarget; enabled: boolean; internalCrisis?: boolean; crisisState?: "pending" | "active" | "contained"; }
+export interface CheckEffect { id: string; name: string; description: string; type: EffectType; value: number; target: EffectTarget; enabled: boolean; internalCrisis?: boolean; crisisState?: "pending" | "active" | "contained"; }
 export interface KingdomFeat {
   id: string; name: string; description: string; minimumLevel: number; repeatable: boolean; retired: boolean;
   prerequisites: { feats: string[]; skills: { id: SkillId; rank: Rank }[]; abilities: { id: AbilityId; minimum: number }[] };
@@ -41,7 +41,9 @@ export function normalizeCheckEffect(raw: unknown, effectId: string, state?: Rea
   if (r.id !== effectId || !EFFECT_TYPES.some(t => t.id === r.type) || typeof r.enabled !== "boolean") throw new Error("Tipo ou identificação de efeito inválidos.");
   if (r.internalCrisis !== undefined && typeof r.internalCrisis !== "boolean" || r.crisisState !== undefined && !["pending", "active", "contained"].includes(String(r.crisisState))) throw new Error("Crise inválida.");
   if (r.crisisState === "pending" && (!r.internalCrisis || r.enabled || Number(r.value) >= 0)) throw new Error("Uma crise pendente deve ser interna, negativa e ainda inativa.");
-  return { ...(r.internalCrisis !== undefined ? {internalCrisis:r.internalCrisis as boolean} : {}), ...(r.crisisState !== undefined ? {crisisState:r.crisisState as CheckEffect["crisisState"]} : {}), id: effectId, name: boundedText(r.name, "Nome do efeito", 120, true), description: boundedText(r.description, "Descrição"), type: r.type as EffectType, value: requireInteger(r.value, "Modificador", r.internalCrisis && r.crisisState === "active" ? -200 : -100, 100), target: validateTarget(r.target, state), enabled: r.enabled };
+  const capacity = isRecord(r.target) && r.target.kind === "reserveCapacity";
+  if (capacity && (Object.keys(r.target as object).length !== 1 || r.internalCrisis || r.crisisState === "pending")) throw new Error("O limite de reservas não é um alvo de crise em testes.");
+  return { ...(r.internalCrisis !== undefined ? {internalCrisis:r.internalCrisis as boolean} : {}), ...(r.crisisState !== undefined ? {crisisState:r.crisisState as CheckEffect["crisisState"]} : {}), id: effectId, name: boundedText(r.name, "Nome do efeito", 120, true), description: boundedText(r.description, "Descrição"), type: r.type as EffectType, value: requireInteger(r.value, "Modificador", r.internalCrisis && r.crisisState === "active" ? -200 : -100, 100), target: capacity ? { kind: "reserveCapacity" } : validateTarget(r.target, state), enabled: r.enabled };
 }
 function effectCollection(raw: unknown, state?: RealmState): Record<string, CheckEffect> {
   if (!isRecord(raw) || Object.keys(raw).length > 100) throw new Error("Coleção de efeitos inválida (máximo 100).");
@@ -171,17 +173,40 @@ export function validateAdvancement(state: RealmState): void {
     }
   }
 }
+/** Ajustes de capacidade são quantidades de armazenamento e somam por origem, sem tipos de bônus de testes. */
+export function resourceCapacity(state: RealmState) {
+  const base = requireInteger(state.progression.level, "Nível", 1, 20) * 5;
+  const sources = new Map<string, { originId: string; label: string; value: number }>();
+  const add = (prefix: string, label: string, effects: Record<string, CheckEffect>) => {
+    for (const e of Object.values(effects)) if (e.enabled && e.target.kind === "reserveCapacity" && e.value) {
+      const originId = `${prefix}:${e.id}`;
+      sources.set(originId, { originId, label: `${label} · ${e.name}`, value: requireInteger(e.value, "Ajuste do limite de reservas", -100, 100) });
+    }
+  };
+  add("effect", "Efeito", state.checkEffects ?? {});
+  const season = SEASONS.find(s => s.id === state.calendar.season);
+  if (season) add(`season:${season.id}`, season.label, state.seasonEffects?.[season.id] ?? {});
+  for (const c of [...choices(state).filter(c => c.kind === "feat" && c.level <= state.progression.level), ...(governmentFeat(state) ? [{ featId: governmentFeat(state)!.id }] : [])]) {
+    const feat = state.feats?.[c.featId!];
+    if (feat) add(`feat:${feat.id}`, feat.name, feat.effects);
+  }
+  for (const [kind, definitions] of [["quest", state.activityDefinitions], ["building", state.projects]] as const) {
+    for (const d of Object.values(definitions)) if (d.completionEffectsActive) add(`${kind}:${d.id}`, d.name, d.outcome?.effects ?? {});
+  }
+  const modifiers = [...sources.values()], adjustment = modifiers.reduce((n, e) => n + e.value, 0);
+  return { base, adjustment, capacity: Math.max(0, requireInteger(base + adjustment, "Limite de reservas")), modifiers };
+}
 export function resourceSummary(state: RealmState) {
   const values = RESOURCES.map(r => state.resources[r.id]), knownTotal = values.reduce<number>((sum, n) => sum + (n ?? 0), 0);
   requireInteger(knownTotal, "Total de reservas", 0);
-  const capacity = requireInteger(state.progression.level, "Nível", 1, 20) * 5;
+  const { capacity } = resourceCapacity(state);
   return { knownTotal, complete: values.every(v => v !== null), total: values.every(v => v !== null) ? knownTotal : null, capacity, excess: Math.max(0, knownTotal - capacity) };
 }
 export function validateResourceChange(before: RealmState, after: RealmState): void {
   const previous = resourceSummary(before), next = resourceSummary(after);
   const adds = RESOURCES.some(r => (after.resources[r.id] ?? 0) > (before.resources[r.id] ?? 0));
   if (adds && !next.complete) throw new Error("Defina todas as reservas antes de acrescentar recursos; o total ainda é desconhecido.");
-  if (adds && previous.excess) throw new Error(`Reservas acima do limite: remova ${previous.excess} antes de acrescentar recursos.`);
+  if (adds && previous.excess && next.capacity <= previous.capacity) throw new Error(`Reservas acima do limite: remova ${previous.excess} antes de acrescentar recursos.`);
   if (adds && next.knownTotal > next.capacity) throw new Error(`O total ultrapassaria a capacidade de ${next.capacity} recursos.`);
 }
 export const currentWeek = (state: RealmState): number => requireInteger(state.calendar.ordinalWeek ?? 1, "Semana", 1);

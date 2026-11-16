@@ -3,7 +3,7 @@ import { CATALOG_VERSION } from "./feat-catalog.js";
 import { MODULE_ID, SKILLS, ABILITIES, createRealmState, checkModifier, degree, DEGREE_LABELS, escapeHTML, type Definition, type RealmState } from "./core.js";
 import { getState } from "./adapter.js";
 import { realmView, type ActorPresentation } from "./view.js";
-import { kingdomRoles, roleModifiers, type ActorAvailability, type KingdomRole, type RoleEffect, type RoleTarget } from "./roles.js";
+import { kingdomRoles, roleModifiers, type ActorAvailability, type KingdomRole, type RoleEffect, type RoleTarget, type EffectTarget } from "./roles.js";
 import { submitRealmCommand } from "./authority.js";
 import { managementAction } from "./management-ui.js";
 import { rollKingdom } from "./native-roll.js";
@@ -299,13 +299,16 @@ export class RealmApplication extends HbsApplication {
     }));
     return availability;
   }
-  targetOptions(target: RoleTarget): string {
-    const key = target.kind === "all" ? "all" : `${target.kind}:${target.id}`;
+  targetOptions(target: EffectTarget, includeCapacity = false): string {
+    const key = target.kind === "all" || target.kind === "reserveCapacity" ? target.kind : `${target.kind}:${target.id}`;
     const option = (value: string, label: string) => `<option value="${escapeHTML(value)}"${value === key ? " selected" : ""}>${escapeHTML(label)}</option>`;
-    return option("all", "Todos os testes") + `<optgroup label="Família de perícias">${ABILITIES.map(a => option(`ability:${a.id}`, a.label)).join("")}</optgroup><optgroup label="Perícia específica">${SKILLS.map(s => option(`skill:${s.id}`, s.label)).join("")}</optgroup><optgroup label="Quest específica">${Object.values(getState(this.actor).activityDefinitions).map(a => option(`activity:${a.id}`, a.name)).join("")}</optgroup><optgroup label="Construção específica">${Object.values(getState(this.actor).projects).map(a => option(`project:${a.id}`, a.name)).join("")}</optgroup>`;
+    return (includeCapacity ? option("reserveCapacity", "Limite de reservas") : "") + option("all", "Todos os testes") + `<optgroup label="Família de perícias">${ABILITIES.map(a => option(`ability:${a.id}`, a.label)).join("")}</optgroup><optgroup label="Perícia específica">${SKILLS.map(s => option(`skill:${s.id}`, s.label)).join("")}</optgroup><optgroup label="Quest específica">${Object.values(getState(this.actor).activityDefinitions).map(a => option(`activity:${a.id}`, a.name)).join("")}</optgroup><optgroup label="Construção específica">${Object.values(getState(this.actor).projects).map(a => option(`project:${a.id}`, a.name)).join("")}</optgroup>`;
   }
-  parseTarget(raw: unknown): RoleTarget {
+  parseTarget(raw: unknown, includeCapacity: true): EffectTarget;
+  parseTarget(raw: unknown, includeCapacity?: false): RoleTarget;
+  parseTarget(raw: unknown, includeCapacity = false): EffectTarget {
     const value = String(raw);
+    if (includeCapacity && value === "reserveCapacity") return { kind: "reserveCapacity" };
     if (value === "all") return { kind: "all" };
     const [kind, targetId] = value.split(":");
     if (!["ability", "skill", "activity", "project"].includes(kind ?? "") || !targetId) throw new Error("Escolha um alvo válido.");

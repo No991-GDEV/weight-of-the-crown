@@ -1,12 +1,13 @@
 {
   "name": "weight-of-the-crown-prototype",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "package": "python tools/package-release.py"
+    "preview:build": "node tools/preview.mjs",
+    "package": "python tools/package.py"
   },
   "devDependencies": {
     "handlebars": "https://registry.npmjs.org/handlebars/-/handlebars-4.7.9.tgz",

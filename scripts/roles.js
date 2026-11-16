@@ -89,6 +89,8 @@ export function kingdomRoles(state) {
     return [...roles.values()].filter(r => !r.deleted);
 }
 export function targetLabel(target, state) {
+    if (target.kind === "reserveCapacity")
+        return "Limite de reservas";
     if (target.kind === "all")
         return "Todos os testes";
     if (target.kind === "ability")

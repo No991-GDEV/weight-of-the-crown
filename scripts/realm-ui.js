@@ -192,13 +192,13 @@ export class DefinitionEditor extends Base {
             e.name = read("name");
             e.value = rawVal ? Number(rawVal) : "";
             e.type = read("type");
-            e.target = this.realm.parseTarget(read("target"));
+            e.target = this.realm.parseTarget(read("target"), true);
         }
     }
     async _prepareContext() {
         return { repeatable: this.repeatable, featTags: CATALOG_TAGS.map(t => ({ ...t, checked: this.featTags.includes(t.id) })), ...this.fields, isProject: this.kind === "project", requiresCheck: this.fields.requiresCheck === "true", duration: this.duration, formError: this.formError, busy: this.busy,
             skills: SKILLS.map(s => ({ ...s, selected: s.id === this.fields.skillId })), resources: RESOURCES.map(r => ({ ...r, amount: this.rewards[r.id], cost: this.costs[r.id] })),
-            effects: this.effects.map(e => ({ ...e, types: EFFECT_TYPES.map(t => ({ ...t, selected: e.type === t.id })), targetOptions: this.realm.targetOptions(e.target) })) };
+            effects: this.effects.map(e => ({ ...e, types: EFFECT_TYPES.map(t => ({ ...t, selected: e.type === t.id })), targetOptions: this.realm.targetOptions(e.target, true) })) };
     }
     async _onRender() {
         this.element.querySelector("form")?.addEventListener("submit", (event) => event.preventDefault());

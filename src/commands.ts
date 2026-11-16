@@ -327,7 +327,7 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
           const current = trial.resources[resourceId as ResourceId]; if (current === null) throw new Error("Defina as reservas antes de receber a recompensa.");
           set(`resources.${resourceId}`, requireInteger(current + amount, "Reserva após a recompensa", 0)); q.grantedResources[resourceId] = (q.grantedResources[resourceId]??0)+amount;
         }
-        validateResourceChange(state, trial); set(`${collection}.${targetId}.completionEffectsActive`, true);
+        set(`${collection}.${targetId}.completionEffectsActive`, true); validateResourceChange(state, trial);
       }
       if (c.advance && !q.timeCounted) { const next = requireInteger(week + q.durationWeeks, "Semana final", 1); set("calendar.ordinalWeek", next); q.timeCounted = true; q.countedWeeks = q.durationWeeks; }
       set(`${collection}.${targetId}.completionEffectsActive`,true);

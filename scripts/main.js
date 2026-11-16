@@ -426,13 +426,15 @@ export class RealmApplication extends HbsApplication {
         }));
         return availability;
     }
-    targetOptions(target) {
-        const key = target.kind === "all" ? "all" : `${target.kind}:${target.id}`;
+    targetOptions(target, includeCapacity = false) {
+        const key = target.kind === "all" || target.kind === "reserveCapacity" ? target.kind : `${target.kind}:${target.id}`;
         const option = (value, label) => `<option value="${escapeHTML(value)}"${value === key ? " selected" : ""}>${escapeHTML(label)}</option>`;
-        return option("all", "Todos os testes") + `<optgroup label="Família de perícias">${ABILITIES.map(a => option(`ability:${a.id}`, a.label)).join("")}</optgroup><optgroup label="Perícia específica">${SKILLS.map(s => option(`skill:${s.id}`, s.label)).join("")}</optgroup><optgroup label="Quest específica">${Object.values(getState(this.actor).activityDefinitions).map(a => option(`activity:${a.id}`, a.name)).join("")}</optgroup><optgroup label="Construção específica">${Object.values(getState(this.actor).projects).map(a => option(`project:${a.id}`, a.name)).join("")}</optgroup>`;
+        return (includeCapacity ? option("reserveCapacity", "Limite de reservas") : "") + option("all", "Todos os testes") + `<optgroup label="Família de perícias">${ABILITIES.map(a => option(`ability:${a.id}`, a.label)).join("")}</optgroup><optgroup label="Perícia específica">${SKILLS.map(s => option(`skill:${s.id}`, s.label)).join("")}</optgroup><optgroup label="Quest específica">${Object.values(getState(this.actor).activityDefinitions).map(a => option(`activity:${a.id}`, a.name)).join("")}</optgroup><optgroup label="Construção específica">${Object.values(getState(this.actor).projects).map(a => option(`project:${a.id}`, a.name)).join("")}</optgroup>`;
     }
-    parseTarget(raw) {
+    parseTarget(raw, includeCapacity = false) {
         const value = String(raw);
+        if (includeCapacity && value === "reserveCapacity")
+            return { kind: "reserveCapacity" };
         if (value === "all")
             return { kind: "all" };
         const [kind, targetId] = value.split(":");

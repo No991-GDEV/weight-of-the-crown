@@ -680,8 +680,8 @@ async function apply(actor, user, raw, operationId, dependencies) {
                         set(`resources.${resourceId}`, requireInteger(current + amount, "Reserva após a recompensa", 0));
                         q.grantedResources[resourceId] = (q.grantedResources[resourceId] ?? 0) + amount;
                     }
-                validateResourceChange(state, trial);
                 set(`${collection}.${targetId}.completionEffectsActive`, true);
+                validateResourceChange(state, trial);
             }
             if (c.advance && !q.timeCounted) {
                 const next = requireInteger(week + q.durationWeeks, "Semana final", 1);

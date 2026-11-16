@@ -15,7 +15,7 @@ O manifesto aponta para o ZIP da versão publicada. Depois de instalar, ative **
 - [Baixar o módulo](https://github.com/No991-GDEV/weight-of-the-crown/releases/latest/download/weight-of-the-crown.zip)
 - [Versões publicadas](https://github.com/No991-GDEV/weight-of-the-crown/releases)
 
-**Versão 0.9.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
+**Versão 0.10.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
 
 ## Recursos
 
@@ -38,11 +38,21 @@ Cada personagem/NPC pode ter até duas Quests abertas por reino. Pendentes e em 
 
 Quests anteriores sem grau aparecem como Resultado não informado. O Mestre pode preencher os quatro textos e usar Alterar resultado para registrar o grau. Ao repetir uma Quest, a execução anterior permanece em Concluídas.
 
-## Versão 0.9.0
+## Versão 0.10.0 — Armazéns e limite de reservas
+
+O Mestre pode configurar **Limite de reservas** como alvo de um efeito do reino ou de **Efeitos ao concluir** de uma construção/Quest. Exemplo: um Armazém com modificador **+10** amplia a capacidade em 10 ao ser concluído, sem gerar recursos. O teto passa a **5 × nível + ajustes ativos**, mínimo 0. Ajustes distintos somam, independentemente do tipo de teste, e a mesma origem nunca duplica.
+
+O ícone de armazém junto ao contador abre os efeitos do reino; passar o ponteiro sobre o contador mostra a base e as origens. Se um efeito expirar ou uma obra voltar a pendente, os recursos são preservados e o excesso é sinalizado, bloqueando novas entradas até resolver a situação. Uma conclusão com ampliação e recursos usa o novo teto na mesma operação, sem aplicação parcial. Os ajustes aceitam inteiros de −100 a +100 por efeito.
+
+Os efeitos sazonais seguem a estação ativa e os efeitos de talentos exigem uma escolha disponível no nível atual. Ajustes de reserva não entram no diálogo de rolagem. Jogadores visualizam o teto, e só o Mestre administra os efeitos.
+
+Validação: **245 testes automatizados** e **8 cenários adicionais no cliente Foundry 14.367 / PF2e 8.6.0**, incluindo persistência, soma de origens, permissões e preservação dos reinos existentes.
+
+## Versões anteriores
 
 Corrige sincronização de consumo e nome das tropas, retomada de publicação/exclusão, recibos de treino e reassociação de fichas órfãs. A melhor contribuição de construção acompanha a ativação dos talentos no diálogo de rolagem. Jogadores usam Progressão para melhorar perícias. Atualizações passivas preservam o foco das janelas e pedidos RPC expirados são limpos sem reproduzir comandos antigos.
 
-Validação desta versão: **232 testes automatizados**, **13 cenários no cliente Foundry desta atualização** e conferência dos dados após reinício do servidor de teste.
+A versão 0.9.0 foi validada com 232 testes automatizados e 13 cenários no cliente Foundry.
 
 Finalize operações pendentes antes de transportar o JSON da ficha para outro mundo; os recibos são documentos do mundo de origem. Notas do Mestre têm a proteção normal da interface do Foundry, conforme a configuração deste projeto.
 

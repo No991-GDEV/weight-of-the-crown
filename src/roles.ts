@@ -1,6 +1,7 @@
 import { ABILITIES, SKILLS, isRecord, requireInteger, type AbilityId, type RealmState, type SkillId } from "./core.js";
 
 export type RoleTarget = { kind: "all" } | { kind: "ability" | "skill" | "activity" | "project"; id: string };
+export type EffectTarget = RoleTarget | { kind: "reserveCapacity" };
 export interface RoleEffect {
   id: string; name: string; description: string; type: "role"; value: number;
   target: RoleTarget; condition: "occupied" | "responsible";
@@ -82,13 +83,14 @@ export function kingdomRoles(state: RealmState): KingdomRole[] {
   }
   return [...roles.values()].filter(r => !r.deleted);
 }
-export function targetLabel(target: RoleTarget, state: RealmState): string {
+export function targetLabel(target: EffectTarget, state: RealmState): string {
+  if (target.kind === "reserveCapacity") return "Limite de reservas";
   if (target.kind === "all") return "Todos os testes";
   if (target.kind === "ability") return `${ABILITIES.find(a => a.id === target.id)?.label ?? "Família indisponível"} · todas as perícias`;
   if (target.kind === "skill") return SKILLS.find(s => s.id === target.id)?.label ?? "Perícia indisponível";
   return (target.kind === "project" ? state.projects : state.activityDefinitions)[target.id]?.name ?? "Definição indisponível";
 }
-export function targetMatches(target: RoleTarget, context: { skillId: SkillId; activityId?: string; projectId?: string }): boolean {
+export function targetMatches(target: EffectTarget, context: { skillId: SkillId; activityId?: string; projectId?: string }): boolean {
   return target.kind === "all" || target.kind === "skill" && target.id === context.skillId || target.kind === "ability" && SKILLS.find(s => s.id === context.skillId)?.abilityId === target.id || target.kind === "activity" && target.id === context.activityId || target.kind === "project" && target.id === context.projectId;
 }
 /** Cada origem entra uma vez; origens distintas somam conforme as regras do reino. */

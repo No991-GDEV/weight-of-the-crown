@@ -33,7 +33,10 @@ export function normalizeCheckEffect(raw, effectId, state) {
         throw new Error("Crise inválida.");
     if (r.crisisState === "pending" && (!r.internalCrisis || r.enabled || Number(r.value) >= 0))
         throw new Error("Uma crise pendente deve ser interna, negativa e ainda inativa.");
-    return { ...(r.internalCrisis !== undefined ? { internalCrisis: r.internalCrisis } : {}), ...(r.crisisState !== undefined ? { crisisState: r.crisisState } : {}), id: effectId, name: boundedText(r.name, "Nome do efeito", 120, true), description: boundedText(r.description, "Descrição"), type: r.type, value: requireInteger(r.value, "Modificador", r.internalCrisis && r.crisisState === "active" ? -200 : -100, 100), target: validateTarget(r.target, state), enabled: r.enabled };
+    const capacity = isRecord(r.target) && r.target.kind === "reserveCapacity";
+    if (capacity && (Object.keys(r.target).length !== 1 || r.internalCrisis || r.crisisState === "pending"))
+        throw new Error("O limite de reservas não é um alvo de crise em testes.");
+    return { ...(r.internalCrisis !== undefined ? { internalCrisis: r.internalCrisis } : {}), ...(r.crisisState !== undefined ? { crisisState: r.crisisState } : {}), id: effectId, name: boundedText(r.name, "Nome do efeito", 120, true), description: boundedText(r.description, "Descrição"), type: r.type, value: requireInteger(r.value, "Modificador", r.internalCrisis && r.crisisState === "active" ? -200 : -100, 100), target: capacity ? { kind: "reserveCapacity" } : validateTarget(r.target, state), enabled: r.enabled };
 }
 function effectCollection(raw, state) {
     if (!isRecord(raw) || Object.keys(raw).length > 100)
@@ -219,10 +222,38 @@ export function validateAdvancement(state) {
         }
     }
 }
+/** Ajustes de capacidade são quantidades de armazenamento e somam por origem, sem tipos de bônus de testes. */
+export function resourceCapacity(state) {
+    const base = requireInteger(state.progression.level, "Nível", 1, 20) * 5;
+    const sources = new Map();
+    const add = (prefix, label, effects) => {
+        for (const e of Object.values(effects))
+            if (e.enabled && e.target.kind === "reserveCapacity" && e.value) {
+                const originId = `${prefix}:${e.id}`;
+                sources.set(originId, { originId, label: `${label} · ${e.name}`, value: requireInteger(e.value, "Ajuste do limite de reservas", -100, 100) });
+            }
+    };
+    add("effect", "Efeito", state.checkEffects ?? {});
+    const season = SEASONS.find(s => s.id === state.calendar.season);
+    if (season)
+        add(`season:${season.id}`, season.label, state.seasonEffects?.[season.id] ?? {});
+    for (const c of [...choices(state).filter(c => c.kind === "feat" && c.level <= state.progression.level), ...(governmentFeat(state) ? [{ featId: governmentFeat(state).id }] : [])]) {
+        const feat = state.feats?.[c.featId];
+        if (feat)
+            add(`feat:${feat.id}`, feat.name, feat.effects);
+    }
+    for (const [kind, definitions] of [["quest", state.activityDefinitions], ["building", state.projects]]) {
+        for (const d of Object.values(definitions))
+            if (d.completionEffectsActive)
+                add(`${kind}:${d.id}`, d.name, d.outcome?.effects ?? {});
+    }
+    const modifiers = [...sources.values()], adjustment = modifiers.reduce((n, e) => n + e.value, 0);
+    return { base, adjustment, capacity: Math.max(0, requireInteger(base + adjustment, "Limite de reservas")), modifiers };
+}
 export function resourceSummary(state) {
     const values = RESOURCES.map(r => state.resources[r.id]), knownTotal = values.reduce((sum, n) => sum + (n ?? 0), 0);
     requireInteger(knownTotal, "Total de reservas", 0);
-    const capacity = requireInteger(state.progression.level, "Nível", 1, 20) * 5;
+    const { capacity } = resourceCapacity(state);
     return { knownTotal, complete: values.every(v => v !== null), total: values.every(v => v !== null) ? knownTotal : null, capacity, excess: Math.max(0, knownTotal - capacity) };
 }
 export function validateResourceChange(before, after) {
@@ -230,7 +261,7 @@ export function validateResourceChange(before, after) {
     const adds = RESOURCES.some(r => (after.resources[r.id] ?? 0) > (before.resources[r.id] ?? 0));
     if (adds && !next.complete)
         throw new Error("Defina todas as reservas antes de acrescentar recursos; o total ainda é desconhecido.");
-    if (adds && previous.excess)
+    if (adds && previous.excess && next.capacity <= previous.capacity)
         throw new Error(`Reservas acima do limite: remova ${previous.excess} antes de acrescentar recursos.`);
     if (adds && next.knownTotal > next.capacity)
         throw new Error(`O total ultrapassaria a capacidade de ${next.capacity} recursos.`);

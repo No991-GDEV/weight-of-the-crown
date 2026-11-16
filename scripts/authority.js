@@ -4,7 +4,7 @@ import { MODULE_ID, isRecord } from "./core.js";
 import { requireCommandAccess } from "./adapter.js";
 import { executeRealmCommand } from "./commands.js";
 import { safeId } from "./roles.js";
-const PROTOCOL = 17, REQUEST_TTL = 20000;
+const PROTOCOL = 18, REQUEST_TTL = 20000;
 const pending = new Map();
 const inFlight = new Set();
 let sessionStarted = Date.now(), sessionId = "", registration = null;

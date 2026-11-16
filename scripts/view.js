@@ -2,7 +2,7 @@ import { openQuestCount, resultNarrative } from "./quests.js";
 import { activeCatalogChoices, featTrains, protectedRole } from "./feat-engine.js";
 import { ABILITIES, SKILLS, RESOURCES, RANKS, DEGREE_LABELS, abilityTotal, proficiency, isRecord } from "./core.js";
 import { kingdomRoles, targetLabel } from "./roles.js";
-import { advancementAbility, effectiveRank, checkContributions, stackedContributionTotal, resourceSummary, currentWeek, questProgress, SEASONS, featureSlots } from "./management.js";
+import { advancementAbility, effectiveRank, checkContributions, stackedContributionTotal, resourceSummary, resourceCapacity, currentWeek, questProgress, SEASONS, featureSlots } from "./management.js";
 import { ARMY_TYPES, CHARTERS, HEARTLANDS, GOVERNMENTS, originAdjustments, governmentSkills, militarySummary, normalizeMilitaryUnit, definitionOutcome } from "./realm-admin.js";
 const signed = (n) => n === null ? "—" : n >= 0 ? `+${n}` : `${n}`;
 export function realmView(state, canEdit, isGM, extra = {}) {
@@ -65,6 +65,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
         }
     });
     const resourceInfo = resourceSummary(state);
+    const capacityInfo = resourceCapacity(state);
     const army = militarySummary(state);
     const militaryUnits = Object.values(state.militaryUnits ?? {}).map(raw => {
         const base = normalizeMilitaryUnit(raw, raw.id), linked = extra.armies?.[raw.id];
@@ -133,7 +134,8 @@ export function realmView(state, canEdit, isGM, extra = {}) {
     return {
         name: state.name, exampleOnly: state.exampleOnly, level: state.progression.level, xp: state.progression.xp ?? "", capacity: resourceInfo.capacity,
         resourceCapacity: resourceInfo.capacity, resourceTotal: resourceInfo.total ?? `${resourceInfo.knownTotal} + ?`, resourceExcess: resourceInfo.excess, resourceUnknown: !resourceInfo.complete,
-        resourcePercent: Math.min(100, resourceInfo.knownTotal / resourceInfo.capacity * 100),
+        resourceCapacityTitle: [`Base: 5 × ${state.progression.level} = ${capacityInfo.base}`, ...capacityInfo.modifiers.map(e => `${e.label}: ${signed(e.value)}`), `Limite: ${capacityInfo.capacity}`].join("\n"),
+        resourcePercent: resourceInfo.capacity ? Math.min(100, resourceInfo.knownTotal / resourceInfo.capacity * 100) : resourceInfo.knownTotal ? 100 : 0,
         crestImage: state.crestImage, week: currentWeek(state), seasons: SEASONS.map(s => ({ ...s, selected: s.id === state.calendar.season })), hasSeason: !!state.calendar.season,
         activeFeats: activeCatalogChoices(state).map(f => ({ id: f.id, name: state.feats[f.id].name, skillLabel: f.choice.featSkillId ? SKILLS.find(s => s.id === f.choice.featSkillId)?.label : "" })),
         population: state.demographics?.population ?? "—", armyLabel: army.label, armyUnitCount: army.count, armyUnitCountLabel: `${army.count} ${army.count === 1 ? "unidade" : "unidades"}`, militaryUnits,

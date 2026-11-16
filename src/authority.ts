@@ -5,7 +5,7 @@ import {requireCommandAccess} from "./adapter.js";
 import {executeRealmCommand,type RealmCommand} from "./commands.js";
 import {safeId} from "./roles.js";
 
-const PROTOCOL=17,REQUEST_TTL=20000;
+const PROTOCOL=18,REQUEST_TTL=20000;
 const pending=new Map<string,{resolve:()=>void;reject:(e:Error)=>void;timer:number;authorityId:string;documentKey:string}>();
 const inFlight=new Set<string>();
 let sessionStarted=Date.now(),sessionId="",registration:Promise<unknown>|null=null;
