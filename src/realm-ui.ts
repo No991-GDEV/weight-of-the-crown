@@ -1,3 +1,4 @@
+import {bindTacticPreview} from "./tactic-preview.js";
 import {QUEST_DEGREES} from "./quests.js";
 import {resolveArmy,availableTactics,trainingCost} from "./army.js";
 import { CATALOG_TAGS } from "./feat-catalog.js";
@@ -169,13 +170,16 @@ export async function editMilitaryUnit(realm:RealmApplication,unitId?:string):Pr
   await submitRealmCommand(realm.actor,{action:"military.save",unit:{...unit,...(!unitId?{...stats,armyType:type,level}:{}),...edited},...(unitId?{changedFields,expectedActor:{name:initial.name,consumption:initial.consumption}}:{})});
 }
 export async function trainMilitaryUnit(realm:RealmApplication,unitId?:string):Promise<void>{
-  if(!game.user.isGM)return;
+  const canTrain=realm.canEdit;
+  if(!canTrain&&!realm.actor.testUserPermission(game.user,2))throw new Error("Você não tem acesso a este reino.");
   const units=Object.values(getState(realm.actor).militaryUnits??{});if(!units.length){ui.notifications.info("Cadastre uma tropa primeiro.");return;}
   if(!unitId){const choice=await DialogV2.input({classes:["twoc","twoc-role-dialog"],window:{title:"Escolher tropa"},content:`<label>Tropa<select name="unit">${units.map(u=>option(u.id,u.name,units[0]!.id)).join("")}</select></label>`,ok:{label:"Preparar treino"},rejectClose:false});if(!choice)return;unitId=String(choice.unit);}
   const unit=units.find(u=>u.id===unitId)!;if(!unit)throw new Error("Unidade não encontrada.");
   const actor=await resolveArmy(realm.actor,unit),cost=trainingCost(actor),tactics=await availableTactics(actor),state=getState(realm.actor),initial=tactics.length?"tactic":"stat";
-  const result=await DialogV2.input({classes:["twoc","twoc-role-dialog"],position:{width:560},window:{title:"Treinar tropa · 1 semana"},content:`<div class="twoc-definition-form"><p><strong>${escapeHTML(unit.name)}</strong> · Custo: <strong>${cost} Comida</strong> · Reserva: ${state.resources.res_food??"a definir"}</p><label>Modalidade<select name="focus">${tactics.length?option("tactic","Aprender tática",initial):""}${option("stat","Treinar atributo (+1)",initial)}</select></label><label data-train-row="tactic">Tática<select name="tactic">${tactics.map(t=>option(t.uuid,t.name,"")).join("")}</select></label><label data-train-row="stat">Atributo aprimorado<select name="stat">${ARMY_STAT_OPTIONS.map(([id,label])=>option(id,label,"ac")).join("")}</select></label><label>Calendário<select name="advance"><option value="yes">Avançar 1 semana</option><option value="no">Manter semana atual</option></select></label></div>`,ok:{label:`Confirmar treino · ${cost} Comida`},rejectClose:false,render:(_e:any,d:any)=>{const el=d.element as HTMLElement,select=el.querySelector<HTMLSelectElement>("[name=focus]")!;const sync=()=>{for(const row of el.querySelectorAll<HTMLElement>("[data-train-row]"))row.hidden=row.dataset.trainRow!==select.value;};sync();select.addEventListener("change",sync);}});
-  if(!result)return;
+  if(!canTrain&&!actor.testUserPermission(game.user,2))throw new Error("Você não tem acesso à ficha desta tropa.");
+  if(!canTrain&&!tactics.length){ui.notifications.info("Não há novas táticas disponíveis para esta tropa.");return;}
+  const result=await DialogV2.input({classes:["twoc","twoc-role-dialog","twoc-training-dialog"],position:{width:600},window:{title:canTrain?"Treinar tropa · 1 semana":"Consultar táticas"},content:`<div class="twoc-definition-form"><p><strong>${escapeHTML(unit.name)}</strong> · Custo: <strong>${cost} Comida</strong> · Reserva: ${state.resources.res_food??"a definir"}</p><label>Modalidade<select name="focus">${tactics.length?option("tactic","Aprender tática",initial):""}${canTrain?option("stat","Treinar atributo (+1)",initial):""}</select></label><label data-train-row="tactic">Tática<select name="tactic">${tactics.map(t=>option(t.uuid,t.name,"")).join("")}</select></label><article class="twoc-tactic-preview" data-train-row="tactic" data-tactic-preview aria-live="polite"></article><label data-train-row="stat">Atributo aprimorado<select name="stat">${ARMY_STAT_OPTIONS.map(([id,label])=>option(id,label,"ac")).join("")}</select></label>${canTrain?`<label>Calendário<select name="advance"><option value="yes">Avançar 1 semana</option><option value="no">Manter semana atual</option></select></label>`:"<p>Consulta: este acesso permite apenas visualizar as táticas.</p>"}</div>`,ok:{label:canTrain?`Confirmar treino · ${cost} Comida`:"Fechar consulta"},rejectClose:false,render:(_e:any,d:any)=>{const el=d.element as HTMLElement;el.dataset.trainingReadOnly=String(!canTrain);bindTacticPreview(el,actor);}});
+  if(!result||!canTrain)return;
   await submitRealmCommand(realm.actor,{action:"military.train",unitId:unit.id,focus:String(result.focus),tactic:result.focus==="tactic"?String(result.tactic):"",stat:result.focus==="stat"?String(result.stat):"",advance:result.advance==="yes",expectedCost:cost,expectedTrainingCount:unit.trainingCount??0,confirmed:true});
 }
 
@@ -188,7 +192,9 @@ export async function expansionAction(realm: RealmApplication, button: HTMLEleme
       const result = await DialogV2.input({ classes: ["twoc", "twoc-role-dialog"], window: { title: "População do reino" }, content: `<div class="twoc-definition-form"><label>População total, incluindo soldados<input name="population" type="number" min="0" step="1" value="${population ?? ""}" placeholder="A definir"></label></div>`, ok: { label: "Salvar população" }, rejectClose: false });
       if (result) await submitRealmCommand(realm.actor, { action: "population", value: String(result.population ?? "").trim() ? Number(result.population) : null });
     } else if (button.dataset.op === "unitAdd" || button.dataset.op === "unitEdit") await editMilitaryUnit(realm, button.dataset.id);
-    else if (button.dataset.op === "unitTrain") await trainMilitaryUnit(realm, button.dataset.id);
+    else if (button.dataset.op === "unitTrain" || button.dataset.op === "unitTactics") {
+      await trainMilitaryUnit(realm, button.dataset.id); await realm.render(); return;
+    }
     else if(button.dataset.op==="unitSheet"&&button.dataset.id){const unit=getState(realm.actor).militaryUnits?.[button.dataset.id];if(unit)await (await resolveArmy(realm.actor,unit)).sheet.render(true);}
     else if(button.dataset.op==="unitLink"&&game.user.isGM&&button.dataset.id){if(await DialogV2.confirm({window:{title:"Vincular ficha militar"},content:"<p>Criar ou recuperar a ficha desta tropa a partir dos dados preservados?</p>",rejectClose:false}))await submitRealmCommand(realm.actor,{action:"military.link",unitId:button.dataset.id,repair:true});}
     else if (button.dataset.op === "unitDelete" && game.user.isGM && button.dataset.id) {

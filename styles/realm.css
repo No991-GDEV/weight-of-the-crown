@@ -446,3 +446,18 @@
 .twoc-result-heading{display:inline-block;padding:3px 7px;border-radius:4px;font-size:12px}.twoc-completed-result p{margin:8px 0 0}
 .twoc-degree-editor{display:grid;gap:10px;border:1px solid #c9b8aa;border-radius:4px;padding:12px}.twoc-degree-editor>p{margin:0;font-size:11px}.twoc-degree-editor label{margin:0}
 @media(max-width:800px){.twoc-quest-assignee-name{max-width:65px}.twoc-quest-assignee{max-width:135px}}
+
+/* Reserva do reino e consulta das táticas no próprio treino. */
+.twoc .twoc-hero-controls{display:flex;align-items:center;justify-content:center;gap:14px}
+.twoc .twoc-hero-controls button{width:26px;height:26px;min-height:0;padding:0;border:1px solid #665b6c;background:#302b35;color:#dfc89b;flex:0 0 26px}
+.twoc .twoc-hero-controls output{font:400 24px Georgia,serif;color:#e2cda6;min-width:32px;text-align:center;font-variant-numeric:tabular-nums}
+.twoc-hero-section h2{line-height:1.4}
+.twoc .twoc-tactic-preview{padding:12px 14px;border:1px solid #77646f;border-radius:5px;background:#302a34;max-height:340px;overflow:auto;scrollbar-gutter:stable;font-size:13px;line-height:1.5;user-select:text}
+.twoc .twoc-tactic-preview h3{margin:0 0 10px;font:400 20px Georgia,serif;color:#e3cda8}
+.twoc .twoc-tactic-preview h4{margin:12px 0 5px;font-size:12px;color:#e3cda8}
+.twoc .twoc-tactic-description>*:last-child{margin-bottom:0}
+.twoc .twoc-tactic-preview[aria-busy=true]{color:#bcaebb}
+.twoc-training-dialog .window-content{overflow-y:auto}
+
+.twoc .twoc-tactic-description,.twoc .twoc-tactic-description :is(p,li,div,span,strong,em),.twoc .twoc-tactic-preview>ul{color:#e8e1e8}
+.twoc .twoc-tactic-description hr{border-color:#77646f}

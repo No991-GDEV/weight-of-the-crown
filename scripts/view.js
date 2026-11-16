@@ -1,6 +1,6 @@
 import { openQuestCount, resultNarrative } from "./quests.js";
 import { activeCatalogChoices, featTrains, protectedRole } from "./feat-engine.js";
-import { ABILITIES, SKILLS, RESOURCES, RANKS, DEGREE_LABELS, abilityTotal, proficiency, isRecord } from "./core.js";
+import { ABILITIES, SKILLS, RESOURCES, RANKS, DEGREE_LABELS, abilityTotal, proficiency, isRecord, kingdomHeroPoints } from "./core.js";
 import { kingdomRoles, targetLabel } from "./roles.js";
 import { advancementAbility, effectiveRank, checkContributions, stackedContributionTotal, resourceSummary, resourceCapacity, currentWeek, questProgress, SEASONS, featureSlots } from "./management.js";
 import { ARMY_TYPES, CHARTERS, HEARTLANDS, GOVERNMENTS, originAdjustments, governmentSkills, militarySummary, normalizeMilitaryUnit, definitionOutcome } from "./realm-admin.js";
@@ -104,7 +104,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
             effects: role.effects.map(e => ({ ...e, signed: signed(e.value), targetLabel: targetLabel(e.target, state), conditionLabel: e.condition === "responsible" ? "Quando conduz a atividade" : "Enquanto ocupado" }))
         };
     });
-    const labels = { "progression.xp": "Experiência", "progression.level": "Nível", "foodStorage.capacity": "Capacidade de armazenamento" };
+    const labels = { "progression.xp": "Experiência", "progression.level": "Nível", "foodStorage.capacity": "Capacidade de armazenamento", heroPoints: "Hero Points do reino" };
     for (const resource of RESOURCES)
         labels[`resources.${resource.id}`] = resource.label;
     for (const attribute of ABILITIES)
@@ -132,6 +132,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
         return { ...o, at: new Date(o.at).toLocaleString("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }), userId: extra.users?.[o.userId] ?? "Conselho", label, summary };
     });
     return {
+        heroPoints: kingdomHeroPoints(state), canSpendHeroPoint: kingdomHeroPoints(state) > 0,
         name: state.name, exampleOnly: state.exampleOnly, level: state.progression.level, xp: state.progression.xp ?? "", capacity: resourceInfo.capacity,
         resourceCapacity: resourceInfo.capacity, resourceTotal: resourceInfo.total ?? `${resourceInfo.knownTotal} + ?`, resourceExcess: resourceInfo.excess, resourceUnknown: !resourceInfo.complete,
         resourceCapacityTitle: [`Base: 5 × ${state.progression.level} = ${capacityInfo.base}`, ...capacityInfo.modifiers.map(e => `${e.label}: ${signed(e.value)}`), `Limite: ${capacityInfo.capacity}`].join("\n"),

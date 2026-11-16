@@ -19,10 +19,18 @@ export async function resolveArmy(realm:any,unit:MilitaryUnit):Promise<any>{
 export function armyView(actor:any){
   return {armyActorUuid:actor.uuid,armyActorName:actor.name,armyMissing:false,level:actor.level,ac:actor.armorClass?.value??actor.system.ac.value,hpCurrent:actor.system.attributes.hp.value,hpMax:actor.system.attributes.hp.max,routThreshold:actor.system.attributes.hp.routThreshold,maneuver:actor.maneuver?.mod??actor.system.saves.maneuver,morale:actor.morale?.mod??actor.system.saves.morale,scouting:actor.scouting?.mod??actor.system.scouting,meleeAttack:actor.strikes?.melee?.variants?.[0]?.mod??null,rangedAttack:actor.strikes?.ranged?.variants?.[0]?.mod??null,consumption:actor.system.consumption,tactics:actor.items.filter((i:any)=>i.type==="campaignFeature"&&i.system.category==="army-tactic").map((i:any)=>i.name).join(" · ")};
 }
-export async function availableTactics(actor:any):Promise<any[]>{
+export interface TacticOption { uuid: string; name: string; }
+export async function availableTactics(actor:any):Promise<TacticOption[]>{
   const pack=game.packs.get("pf2e.kingmaker-features");if(!pack)throw new Error("Compêndio de táticas do PF2e não encontrado.");
   const index=await pack.getIndex({fields:["system.category","system.level.value","system.traits.value"]});
-  return index.filter((i:any)=>i.type==="campaignFeature"&&i.system.category==="army-tactic"&&i.system.level.value<=actor.level&&!actor.items.some((t:any)=>t.sourceId===i.uuid)&&(!i.system.traits.value.some((t:string)=>["infantry","cavalry","skirmisher","siege"].includes(t))||i.system.traits.value.includes(actor.system.traits.type))).map((i:any)=>({uuid:i.uuid??`Compendium.pf2e.kingmaker-features.Item.${i._id}`,name:i.name}));
+  return index.filter((i:any)=>i.type==="campaignFeature"&&i.system.category==="army-tactic"&&i.system.level.value<=actor.level&&!actor.items.some((t:any)=>t.sourceId===(i.uuid??`Compendium.pf2e.kingmaker-features.Item.${i._id}`))&&(!i.system.traits.value.some((t:string)=>["infantry","cavalry","skirmisher","siege"].includes(t))||i.system.traits.value.includes(actor.system.traits.type))).map((i:any)=>({uuid:i.uuid??`Compendium.pf2e.kingmaker-features.Item.${i._id}`,name:i.name}));
+}
+/** Consulta o registro original, sem criar Item, recibo ou alterar a ficha militar. */
+export async function resolveTrainingTactic(actor:any,uuid:string):Promise<any>{
+  if (!(await availableTactics(actor)).some(t=>t.uuid===uuid)) throw new Error("Escolha uma tática válida do compêndio, ainda não aprendida.");
+  const item = await fromUuid(uuid);
+  if (!item || item.uuid!==uuid || item.type!=="campaignFeature" || item.system.category!=="army-tactic" || item.system.level.value>actor.level || !actor.checkItemValidity(item.toObject())) throw new Error("Tática indisponível ou incompatível com esta tropa.");
+  return item;
 }
 export async function recoverTraining(actor:any,realm:any):Promise<void>{
   const pending=actor.getFlag(MODULE_ID,"pendingTraining");if(!pending)return;
@@ -92,9 +100,9 @@ export const armyGateway:ArmyGateway={
     const actor=await resolveArmy(realm,unit);await recoverTraining(actor,realm);const cost=trainingCost(actor),beforeValues:Record<string,number>={};let apply:()=>Promise<void>,rollback:()=>Promise<void>;
     if(command.focus==="tactic"){
       if(command.stat)throw new Error("Aprender tática não aprimora atributo.");
-      const options=await availableTactics(actor);if(!options.some(i=>i.uuid===command.tactic))throw new Error("Escolha uma tática válida do compêndio, ainda não aprendida.");
+      const template=await resolveTrainingTactic(actor,command.tactic);
       if(actor.items.filter((i:any)=>i.type==="campaignFeature"&&i.system.category==="army-tactic").length>=actor.maxTactics)throw new Error("A tropa atingiu seu limite de táticas.");
-      const template=await fromUuid(command.tactic);if(!template||!actor.checkItemValidity(template.toObject()))throw new Error("Tática incompatível.");let added:any;
+      let added:any;
       apply=async()=>{const data=template.toObject();delete data._id;data.flags??={};data.flags[MODULE_ID]={...(data.flags[MODULE_ID]??{}),training:operationId};data.flags.core={...(data.flags.core??{}),sourceId:template.uuid};[added]=await actor.createEmbeddedDocuments("Item",[data]);if(!added)throw new Error("A tática não foi salva.");};rollback=async()=>{if(added&&actor.items.has(added.id))await actor.deleteEmbeddedDocuments("Item",[added.id]);};
     }else if(command.focus==="stat"){
       const paths:Record<string,string>={ac:"system.ac.value",scouting:"system.scouting",maneuver:"system.saves.maneuver",morale:"system.saves.morale",hpMax:"system.attributes.hp.max"};

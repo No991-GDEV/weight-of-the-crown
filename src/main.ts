@@ -1,6 +1,6 @@
 import {resolveArmy,armyView} from "./army.js";
 import { CATALOG_VERSION } from "./feat-catalog.js";
-import { MODULE_ID, SKILLS, ABILITIES, createRealmState, checkModifier, degree, DEGREE_LABELS, escapeHTML, type Definition, type RealmState } from "./core.js";
+import { MODULE_ID, SKILLS, ABILITIES, createRealmState, checkModifier, degree, DEGREE_LABELS, escapeHTML, kingdomHeroPoints, type Definition, type RealmState } from "./core.js";
 import { getState } from "./adapter.js";
 import { realmView, type ActorPresentation } from "./view.js";
 import { kingdomRoles, roleModifiers, type ActorAvailability, type KingdomRole, type RoleEffect, type RoleTarget, type EffectTarget } from "./roles.js";
@@ -22,7 +22,7 @@ export class RealmApplication extends HbsApplication {
     classes: ["twoc", "twoc-realm"],
     position: { width: 1120, height: 840 }, window: { title: "The Weight of the Crown", resizable: true },
     actions: {
-      section: RealmApplication.section, retryOperation: RealmApplication.retryOperation,
+      section: RealmApplication.section, retryOperation: RealmApplication.retryOperation, heroPoint: RealmApplication.heroPoint,
       exportRealm: RealmApplication.exportRealm,
       importRealm: RealmApplication.importRealm,
       ownership: RealmApplication.ownership,
@@ -45,6 +45,7 @@ export class RealmApplication extends HbsApplication {
   pendingFields = new Map<string, string>();
   pendingSaves = new Set<Promise<unknown>>();
   busyRolls = new Set<string>();
+  heroPointsPending = false;
   lastRoll = "";
   status = "";
   closing = false;
@@ -64,6 +65,20 @@ export class RealmApplication extends HbsApplication {
   get title(): string { return `${this.actor.name} · The Weight of the Crown`; }
   get canAssignQuests():boolean{return game.user.isGM||this.actor.testUserPermission(game.user,2);}
   get canEdit(): boolean { return game.user.isGM || this.actor.testUserPermission(game.user, 3); }
+  static async heroPoint(this: RealmApplication, _event: Event, button: HTMLElement): Promise<void> {
+    if (!game.user.isGM || this.heroPointsPending) return;
+    const delta = Number(button.dataset.delta);
+    if (delta !== 1 && delta !== -1) return;
+    this.heroPointsPending = true;
+    (this.element as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-action="heroPoint"]').forEach(b => b.disabled = true);
+    const task = (async () => {
+      await submitRealmCommand(this.actor, { action: "heroPoints.adjust", delta, expectedValue: kingdomHeroPoints(getState(this.actor)) });
+      this.status = "Salvo";
+    })();
+    this.pendingSaves.add(task);
+    try { await task; } catch (error) { notifyError(error); }
+    finally { this.pendingSaves.delete(task); this.heroPointsPending = false; if (!this.closing) await this.render({ force: true }); }
+  }
   async _prepareContext(): Promise<Record<string, unknown>> {
     try {
       if (!game.user.isGM && !this.actor.testUserPermission(game.user, 2)) throw new Error("Você não tem acesso a este reino.");
@@ -88,7 +103,7 @@ export class RealmApplication extends HbsApplication {
         this.privateDocument ??= this.findPrivateDocument();
         this.privatePage = this.privateDocument?.pages?.find((p: any) => p.getFlag(MODULE_ID, "notesPage")) ?? null;
       }
-      return { ...context, pendingTasks:Object.values(state.pendingTasks??{}).filter(t=>game.user.isGM||t.userId===game.user.id).map(t=>({id:t.id,label:t.kind==="publication"?"Publicação de talento":"Exclusão da ficha militar"})), name: this.actor.name, actorId: this.actor.id, status: this.status, lastRoll: this.lastRoll,
+      return { ...context, heroPointsBusy: this.heroPointsPending, pendingTasks:Object.values(state.pendingTasks??{}).filter(t=>game.user.isGM||t.userId===game.user.id).map(t=>({id:t.id,label:t.kind==="publication"?"Publicação de talento":"Exclusão da ficha militar"})), name: this.actor.name, actorId: this.actor.id, status: this.status, lastRoll: this.lastRoll,
         sectionRealm: this.activeSection === "realm", sectionDefinitions: this.activeSection === "definitions",
         sectionHistory: this.activeSection === "history", sectionRoles: this.activeSection === "roles", sectionProgression: this.activeSection === "progression", sectionMilitary: this.activeSection === "military", sectionPrivate: game.user.isGM && this.activeSection === "private",
         gmNotes: game.user.isGM && this.activeSection === "private" ? this.notesText(this.privatePage?.text?.content ?? "") : ""

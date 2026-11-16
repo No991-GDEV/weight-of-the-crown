@@ -1,7 +1,7 @@
 import { QUEST_RESULT_FIELDS, resultNarrative, assertQuestCapacity } from "./quests.js";
 import { applyFeatCommand, applyQuestFeatRewards, settleFeatIncome, normalizeFeatTags } from "./feat-engine.js";
-import { MODULE_ID, RULES_VERSION, ABILITIES, SKILLS, isRecord, normalizeField, normalizeDefinition, readPath, requireInteger, assertRealm } from "./core.js";
-import { auditEntry, getState, requireCommandAccess, requireGM } from "./adapter.js";
+import { MODULE_ID, RULES_VERSION, ABILITIES, SKILLS, isRecord, normalizeField, normalizeDefinition, readPath, requireInteger, kingdomHeroPoints, assertRealm } from "./core.js";
+import { auditEntry, getState, requireCommandAccess, requireEditor, requireGM } from "./adapter.js";
 import { kingdomRoles, normalizeRole, safeId, validateActorUuid } from "./roles.js";
 import { currentWeek, makeFeatureChoice, normalizeCheckEffect, normalizeFeat, questProgress, SEASONS, validateClearFeatureChoice, validateImagePath, validateResourceChange, resourceSummary } from "./management.js";
 import { GOVERNMENTS, normalizeOrigin, initialGovernmentFeat, normalizeOutcome, definitionOutcome, normalizeMilitaryUnit } from "./realm-admin.js";
@@ -66,6 +66,26 @@ async function apply(actor, user, raw, operationId, dependencies) {
         changes[`flags.${MODULE_ID}.state.${p}`] = value;
     };
     switch (c.action) {
+        case "heroPoints.adjust": {
+            gm();
+            keys(["delta", "expectedValue"]);
+            if (c.delta !== 1 && c.delta !== -1)
+                throw new Error("Adicione ou gaste um Hero Point por vez.");
+            const current = kingdomHeroPoints(state);
+            if (requireInteger(c.expectedValue, "Quantidade anterior", 0) !== current)
+                throw new Error("A reserva de Hero Points mudou. Confira a quantidade atual antes de tentar novamente.");
+            if (c.delta < 0 && current === 0)
+                throw new Error("O reino não possui Hero Points para gastar.");
+            const next = requireInteger(current + c.delta, "Hero Points do reino", 0);
+            set("heroPoints", next);
+            kind = "field";
+            path = "heroPoints";
+            before = current;
+            after = next;
+            detail = c.delta > 0 ? "Hero Point adicionado ao reino" : "Hero Point gasto pelo reino";
+            category = "Hero Points";
+            break;
+        }
         case "operation.retry": {
             keys(["taskId"]);
             safeId(c.taskId);
@@ -255,7 +275,7 @@ async function apply(actor, user, raw, operationId, dependencies) {
             break;
         }
         case "military.train": {
-            gm();
+            requireEditor(actor, user);
             keys(["unitId", "focus", "stat", "tactic", "advance", "confirmed", "expectedCost", "expectedTrainingCount"]);
             safeId(c.unitId);
             const unit = state.militaryUnits?.[c.unitId];

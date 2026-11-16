@@ -8,8 +8,8 @@ import { originAbility, validateRealmAdmin } from "./realm-admin.js";
 /** Regras e estado independentes do DOM, Foundry e PF2e. Fase 5 / F5-001. */
 export const MODULE_ID = "weight-of-the-crown";
 export const SCHEMA_VERSION = "0.1.0";
-export const RULES_VERSION = "0.41.0";
-export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", RULES_VERSION];
+export const RULES_VERSION = "0.42.0";
+export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", "0.41.0", RULES_VERSION];
 export const ABILITIES = [
     { id: "ability_government", label: "Governo" },
     { id: "ability_economy", label: "Economia" },
@@ -51,6 +51,9 @@ export function numericInput(value, label, min, max) {
         return null;
     return requireInteger(Number(value), label, min, max);
 }
+export function kingdomHeroPoints(state) {
+    return requireInteger(state.heroPoints === undefined ? 0 : state.heroPoints, "Hero Points do reino", 0);
+}
 export function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -68,6 +71,7 @@ export function assertRealm(value) {
     for (const { id } of RESOURCES)
         if (value.resources[id] !== null)
             requireInteger(value.resources[id], id, 0);
+    kingdomHeroPoints(value);
     for (const { id } of ABILITIES)
         if (value.creation.attributeAllocations[id] !== null)
             requireInteger(value.creation.attributeAllocations[id], id, 0);
@@ -218,7 +222,7 @@ export function createTestState(realmId) {
         progression: { level: 2, xp: 0, partyLevel: null },
         calendar: { ordinalWeek: 1, phase: null, preparationWeeks: 4, winterWeeks: 12 },
         resources: { res_treasury: 2, res_wood: 0, res_stone: null, res_metal: null, res_food: 0 },
-        foodStorage: { capacity: 6 },
+        foodStorage: { capacity: 6 }, heroPoints: 0,
         creation: { attributeAllocations: allocations, fixedAdjustments: [{ originId: "imperial_affiliation", abilityId: "ability_economy", value: 1, ruleId: "TWOC-COMP-009" }], trainedSkillChoices: null, initialFeatId: null },
         skills: Object.fromEntries(SKILLS.map(s => [s.id, { abilityId: s.abilityId, rank: trained.includes(s.id) ? 1 : 0 }])),
         politicalGroups: {}, people: {}, fronts: {}, activityRuns: {}, militaryUnits: {}, agreements: {}, obligations: {}, effects: {}, turns: {}, operations: {},

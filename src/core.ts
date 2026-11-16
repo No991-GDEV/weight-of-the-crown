@@ -8,8 +8,8 @@ import { originAbility, validateRealmAdmin, type OriginProfile, type CompletionO
 /** Regras e estado independentes do DOM, Foundry e PF2e. Fase 5 / F5-001. */
 export const MODULE_ID = "weight-of-the-crown";
 export const SCHEMA_VERSION = "0.1.0";
-export const RULES_VERSION = "0.41.0";
-export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", RULES_VERSION] as const;
+export const RULES_VERSION = "0.42.0";
+export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", "0.41.0", RULES_VERSION] as const;
 export const ABILITIES = [
   { id: "ability_government", label: "Governo" },
   { id: "ability_economy", label: "Economia" },
@@ -77,6 +77,7 @@ export interface RealmState {
   progression: { level: number; xp: number | null; partyLevel: number | null };
   calendar: { ordinalWeek: number | null; phase: string | null; preparationWeeks: number; winterWeeks: number; season?: Season };
   resources: Record<ResourceId, number | null>;
+  heroPoints?: number;
   foodStorage: { capacity: number };
   creation: {
     attributeAllocations: Record<AbilityId, number | null>;
@@ -121,6 +122,9 @@ export function numericInput(value: string, label: string, min?: number, max?: n
   if (value.trim() === "") return null;
   return requireInteger(Number(value), label, min, max);
 }
+export function kingdomHeroPoints(state: RealmState): number {
+  return requireInteger(state.heroPoints === undefined ? 0 : state.heroPoints, "Hero Points do reino", 0);
+}
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -133,6 +137,7 @@ export function assertRealm(value: unknown): asserts value is RealmState {
   requireInteger(value.progression.level, "Nível", 1, 20);
   for (const key of ["xp", "partyLevel"]) if (value.progression[key] !== null) requireInteger(value.progression[key], key, 0);
   for (const { id } of RESOURCES) if (value.resources[id] !== null) requireInteger(value.resources[id], id, 0);
+  kingdomHeroPoints(value as unknown as RealmState);
   for (const { id } of ABILITIES) if (value.creation.attributeAllocations[id] !== null) requireInteger(value.creation.attributeAllocations[id], id, 0);
   if (!Array.isArray(value.creation.fixedAdjustments)) throw new Error("Ajustes fixos inválidos.");
   for (const adjustment of value.creation.fixedAdjustments) {
@@ -244,7 +249,7 @@ export function createTestState(realmId: string): RealmState {
     progression: { level: 2, xp: 0, partyLevel: null },
     calendar: { ordinalWeek: 1, phase: null, preparationWeeks: 4, winterWeeks: 12 },
     resources: { res_treasury: 2, res_wood: 0, res_stone: null, res_metal: null, res_food: 0 },
-    foodStorage: { capacity: 6 },
+    foodStorage: { capacity: 6 }, heroPoints: 0,
     creation: { attributeAllocations: allocations, fixedAdjustments: [{ originId: "imperial_affiliation", abilityId: "ability_economy", value: 1, ruleId: "TWOC-COMP-009" }], trainedSkillChoices: null, initialFeatId: null },
     skills: Object.fromEntries(SKILLS.map(s => [s.id, { abilityId: s.abilityId, rank: trained.includes(s.id) ? 1 : 0 }])) as RealmState["skills"],
     politicalGroups: {}, people: {}, fronts: {}, activityRuns: {}, militaryUnits: {}, agreements: {}, obligations: {}, effects: {}, turns: {}, operations: {},

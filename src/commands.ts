@@ -2,7 +2,7 @@ import {QUEST_RESULT_FIELDS,resultNarrative,assertQuestCapacity} from "./quests.
 import type { PendingTask } from "./pending.js";
 import type {ArmyGateway,ArmyMutation} from "./army.js";
 import { applyFeatCommand, applyQuestFeatRewards, settleFeatIncome, normalizeFeatTags, type FeatDependencies, type FeatPublication } from "./feat-engine.js";
-import { MODULE_ID, RULES_VERSION, ABILITIES, SKILLS, RESOURCES, isRecord, normalizeField, normalizeDefinition, readPath, requireInteger, assertRealm, type RealmState, type ResourceId, type SkillId } from "./core.js";
+import { MODULE_ID, RULES_VERSION, ABILITIES, SKILLS, RESOURCES, isRecord, normalizeField, normalizeDefinition, readPath, requireInteger, kingdomHeroPoints, assertRealm, type RealmState, type ResourceId, type SkillId } from "./core.js";
 import { auditEntry, getState, requireCommandAccess, requireEditor, requireGM, type PublicDocument, type UserContext } from "./adapter.js";
 import { kingdomRoles, normalizeRole, safeId, validateActorUuid } from "./roles.js";
 import { boundedText, currentWeek, makeFeatureChoice, normalizeCheckEffect, normalizeFeat, questProgress, SEASONS, validateClearFeatureChoice, validateImagePath, validateResourceChange, resourceSummary } from "./management.js";
@@ -50,6 +50,16 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
     changes[`flags.${MODULE_ID}.state.${p}`] = value;
   };
   switch (c.action) {
+    case "heroPoints.adjust": {
+      gm(); keys(["delta", "expectedValue"]);
+      if (c.delta !== 1 && c.delta !== -1) throw new Error("Adicione ou gaste um Hero Point por vez.");
+      const current = kingdomHeroPoints(state);
+      if (requireInteger(c.expectedValue, "Quantidade anterior", 0) !== current) throw new Error("A reserva de Hero Points mudou. Confira a quantidade atual antes de tentar novamente.");
+      if (c.delta < 0 && current === 0) throw new Error("O reino não possui Hero Points para gastar.");
+      const next = requireInteger(current + c.delta, "Hero Points do reino", 0);
+      set("heroPoints", next); kind = "field"; path = "heroPoints"; before = current; after = next;
+      detail = c.delta > 0 ? "Hero Point adicionado ao reino" : "Hero Point gasto pelo reino"; category = "Hero Points"; break;
+    }
     case "operation.retry": {
       keys(["taskId"]); safeId(c.taskId);
       const task=state.pendingTasks?.[c.taskId]; if (!task) return [];
@@ -128,7 +138,7 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
       set(path, c.actorUuid); detail = "Capitão da unidade atualizado"; category = "Exército"; break;
     }
     case "military.train": {
-      gm();keys(["unitId","focus","stat","tactic","advance","confirmed","expectedCost","expectedTrainingCount"]);safeId(c.unitId);
+      requireEditor(actor,user);keys(["unitId","focus","stat","tactic","advance","confirmed","expectedCost","expectedTrainingCount"]);safeId(c.unitId);
       const unit=state.militaryUnits?.[c.unitId];if(!unit)throw new Error("Unidade não encontrada.");
       if(c.confirmed!==true||typeof c.advance!=="boolean")throw new Error("Confirme o treinamento.");
       if(!["tactic","stat"].includes(String(c.focus)))throw new Error("Foco de treinamento inválido.");

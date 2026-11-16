@@ -15,7 +15,7 @@ O manifesto aponta para o ZIP da versão publicada. Depois de instalar, ative **
 - [Baixar o módulo](https://github.com/No991-GDEV/weight-of-the-crown/releases/latest/download/weight-of-the-crown.zip)
 - [Versões publicadas](https://github.com/No991-GDEV/weight-of-the-crown/releases)
 
-**Versão 0.10.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
+**Versão 0.11.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
 
 ## Recursos
 
@@ -37,6 +37,16 @@ O editor possui textos separados para Sucesso crítico, Sucesso, Falha e Falha c
 Cada personagem/NPC pode ter até duas Quests abertas por reino. Pendentes e em andamento contam; concluídas, construções e cargos não contam. Jogadores podem arrastar os Actors que controlam para os slots no resumo, inclusive com permissão de observador do reino. O retrato e a contagem de vagas ficam à esquerda da CD. A autoatribuição não concede acesso aos demais campos do reino.
 
 Quests anteriores sem grau aparecem como Resultado não informado. O Mestre pode preencher os quatro textos e usar Alterar resultado para registrar o grau. Ao repetir uma Quest, a execução anterior permanece em Concluídas.
+
+## Versão 0.11.0 — Táticas e Hero Points
+
+O formulário **Aprender tática** mostra a descrição completa do Item original Kingmaker do PF2e, filtrado para a tropa correspondente. A troca de seleção atualiza a consulta na mesma janela, sem copiar descrições para outra base, aprender uma tática ou cobrar Comida. Modificadores estruturados disponíveis aparecem junto do texto. A confirmação aguarda o carregamento, e o registro é conferido novamente antes do treino.
+
+Jogadores com **OWNER no reino** também confirmam treinos e o consumo de Comida. Observadores usam **Consultar táticas**, em modo de leitura, desde que possam visualizar a ficha militar. Criação e edição administrativa das tropas continuam com o Mestre.
+
+A barra lateral oferece **Kingdom Hero Points**, reserva independente dos personagens e dos recursos armazenados. Só o Mestre adiciona e gasta pontos, com sincronização, histórico e persistência no JSON do reino. Valores são inteiros não negativos, sem teto de regra; cliques repetidos e comandos com saldo desatualizado não duplicam operações. Fichas antigas mostram 0 sem gravação automática durante a leitura. Não altera Hero Points de personagens nem acrescenta rerrolagens automáticas.
+
+Validação: **266 testes automatizados** e **10 cenários no Foundry 14.367 / PF2e 8.6.0**, incluindo treino confirmado por jogador, consulta de observador, sincronização e reinício real do servidor. Reinos existentes preservados.
 
 ## Versão 0.10.0 — Armazéns e limite de reservas
 
