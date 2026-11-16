@@ -1,4 +1,4 @@
-import {QUEST_RESULT_FIELDS,resultNarrative,assertQuestCapacity} from "./quests.js";
+import {QUEST_RESULT_FIELDS,resultNarrative,assertQuestCapacity,completedQuestRun} from "./quests.js";
 import type { PendingTask } from "./pending.js";
 import type {ArmyGateway,ArmyMutation} from "./army.js";
 import { applyFeatCommand, applyQuestFeatRewards, settleFeatIncome, normalizeFeatTags, type FeatDependencies, type FeatPublication } from "./feat-engine.js";
@@ -177,23 +177,26 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
       detail = `${c.kind === "activity" ? "Quest" : "Construção"} removida: ${existing.name}`; category = "Quests e obras"; break;
     }
     case "binding.save": {
-      keys(["kind", "definitionId", "actorUuid"]); safeId(c.definitionId);
+      keys(["kind", "definitionId", "actorUuid", "runId"]); safeId(c.definitionId);
       if (c.kind !== "activity" && c.kind !== "project") throw new Error("Tipo de atividade inválido.");
+      if (c.runId !== undefined && (c.kind !== "activity" || typeof c.runId !== "string")) throw new Error("Registro concluído inválido.");
       validateActorUuid(c.actorUuid);
-      const collection=c.kind==="activity"?"activityDefinitions":"projects",def=state[collection][c.definitionId];
-      if(!def)throw new Error("Atividade não encontrada.");
+      const collection=c.kind==="activity"?"activityDefinitions":"projects",def=state[collection][c.definitionId],run=typeof c.runId==="string"?completedQuestRun(state,c.definitionId,c.runId):null;
+      if(!def&&!run)throw new Error("Atividade não encontrada.");
+      const completed=!!run||questProgress(state,c.definitionId,c.kind).status==="completed";
+      const currentUuid=run?run.progress.responsibleActorUuid??null:completed?def!.quest?.responsibleActorUuid??def!.actorUuid??null:def!.actorUuid??null;
       const resolve=async(uuid:string)=>{
         const linked=await dependencies.resolveActor?.(uuid);
         if(!linked||linked.documentName!=="Actor"||!["character","npc"].includes(linked.type)||linked.uuid!==uuid)throw new Error("Selecione um personagem ou NPC existente.");return linked;
       };
       if(c.kind==="activity"&&!user.isGM){
-        if(questProgress(state,def.id).status==="completed")throw new Error("Somente Quests abertas podem receber seu personagem.");
-        if(def.actorUuid&&!(await resolve(def.actorUuid)).testUserPermission(user,3))throw new Error("Este responsável só pode ser trocado pelo Mestre ou por seu controlador.");
+        if(currentUuid&&!(await resolve(currentUuid)).testUserPermission(user,3))throw new Error("Este responsável só pode ser trocado pelo Mestre ou por seu controlador.");
         if(c.actorUuid&&!(await resolve(c.actorUuid)).testUserPermission(user,3))throw new Error("Você só pode vincular personagens ou NPCs que controla.");
       }else if(c.actorUuid){const linked=await resolve(c.actorUuid);if(!user.isGM&&!linked.testUserPermission(user,2))throw new Error("Você não tem acesso a esse personagem.");}
-      if((def.actorUuid??null)===c.actorUuid)return [];
-      if(c.kind==="activity"&&questProgress(state,def.id).status!=="completed")assertQuestCapacity(state,c.actorUuid,def.id);
-      path=`${collection}.${def.id}.actorUuid`;before=def.actorUuid??null;after=c.actorUuid;kind="field";
+      if(currentUuid===c.actorUuid)return [];
+      if(c.kind==="activity"&&!completed)assertQuestCapacity(state,c.actorUuid,c.definitionId);
+      path=run?`definitionRuns.${c.runId}.progress.responsibleActorUuid`:completed?`${collection}.${c.definitionId}.quest.responsibleActorUuid`:`${collection}.${c.definitionId}.actorUuid`;before=currentUuid;after=c.actorUuid;kind="field";
+      if(!run)set(`${collection}.${c.definitionId}.actorUuid`,c.actorUuid);
       set(path,c.actorUuid);detail="Responsável atualizado";category="Responsável";break;
     }
     case "role.save": {
@@ -317,9 +320,10 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
     }
     case "quest.complete": case "project.complete": {
       const defKind = c.action === "quest.complete" ? "activity" : "project", collection = defKind === "activity" ? "activityDefinitions" : "projects", targetId = defKind === "activity" ? c.questId : c.projectId;
-      gm(); keys([defKind === "activity" ? "questId" : "projectId", "advance", "confirmed", "expectedDuration", "result"]); safeId(targetId);
+      gm(); keys([defKind === "activity" ? "questId" : "projectId", "advance", "confirmed", "expectedDuration", "result", "expectedRunId"]); safeId(targetId);
       if (typeof c.advance !== "boolean" || c.confirmed !== true) throw new Error("Confirme a conclusão e a opção de calendário.");
       const q = questProgress(state, targetId, defKind), week = currentWeek(state), first = q.status !== "completed" && !q.benefitsApplied, definition = state[collection][targetId]!;
+      if(defKind==="activity"&&definition.repeatable===true&&c.expectedRunId!==(q.runId??null))throw new Error("Esta execução da Quest já foi concluída ou mudou. Confira a nova Quest antes de confirmar novamente.");
       if (q.status === "completed" && (!c.advance || q.timeCounted)) return [];
       if (c.advance && requireInteger(c.expectedDuration, "Duração confirmada", 1, 10000) !== q.durationWeeks) throw new Error("A duração da Quest mudou. Confira a duração antes de confirmar novamente.");
       if (c.result !== undefined && !["criticalFailure","failure","success","criticalSuccess"].includes(String(c.result))) throw new Error("Resultado da conclusão inválido.");
@@ -343,7 +347,13 @@ async function apply(actor: PublicDocument, user: UserContext, raw: unknown, ope
       set(`${collection}.${targetId}.completionEffectsActive`,true);
       q.status = "completed"; q.completionWeek ??= c.advance ? currentWeek(trial) : week;
       if (first && defKind === "activity") { const extra = applyQuestFeatRewards(trial, definition, q.result??undefined, q.runId!, user.id); if (extra) q.grantedResources!.res_treasury = (q.grantedResources!.res_treasury ?? 0) + extra; }
-      set(`${collection}.${targetId}.quest`, q); detail = `${defKind === "activity" ? "Quest" : "Construção"} concluída: ${definition.name}${c.advance ? ` · ${q.durationWeeks} semana(s) contabilizada(s)` : " · sem avanço de calendário"}`; category = "Quests e obras"; break;
+      if(first&&defKind==="activity"&&definition.repeatable===true){
+        set(`definitionRuns.${q.runId!}`,{definitionId:targetId,name:definition.name,description:definition.description,skillId:definition.skillId,dc:definition.dc,progress:structuredClone(q)});
+        set(`${collection}.${targetId}.actorUuid`,null);
+        set(`${collection}.${targetId}.quest`,{durationWeeks:q.durationWeeks,status:"pending",startWeek:null,completionWeek:null,timeCounted:false,benefitsApplied:false,runId:`${operationId}_next`});
+        for(const field of ["result","resultText","responsibleActorUuid","grantedResources","countedWeeks"])set(`${collection}.${targetId}.quest.-=${field}`,null);
+      }else set(`${collection}.${targetId}.quest`, q);
+      detail = `${defKind === "activity" ? "Quest" : "Construção"} concluída: ${definition.name}${c.advance ? ` · ${q.durationWeeks} semana(s) contabilizada(s)` : " · sem avanço de calendário"}`; category = "Quests e obras"; break;
     }
     case "quest.repeat": {
       gm(); keys(["questId", "confirmed", "keepActor"]); safeId(c.questId); const q = questProgress(state, c.questId);

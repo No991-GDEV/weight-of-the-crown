@@ -1,4 +1,12 @@
 import { isRecord } from "./core.js";
+import { safeId } from "./roles.js";
+export function completedQuestRun(state, definitionId, runId) {
+    safeId(runId);
+    const run = state.definitionRuns?.[runId];
+    if (!isRecord(run) || run.definitionId !== definitionId || typeof run.name !== "string" || !isRecord(run.progress) || run.progress.status !== "completed")
+        throw new Error("Registro concluído não encontrado para esta Quest.");
+    return run;
+}
 export const QUEST_DEGREES = ["criticalSuccess", "success", "failure", "criticalFailure"];
 export const QUEST_RESULT_FIELDS = QUEST_DEGREES.map(degree => `${degree}Text`);
 export const OPEN_QUEST_LIMIT = 2;

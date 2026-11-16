@@ -8,8 +8,8 @@ import { originAbility, validateRealmAdmin } from "./realm-admin.js";
 /** Regras e estado independentes do DOM, Foundry e PF2e. Fase 5 / F5-001. */
 export const MODULE_ID = "weight-of-the-crown";
 export const SCHEMA_VERSION = "0.1.0";
-export const RULES_VERSION = "0.42.0";
-export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", "0.41.0", RULES_VERSION];
+export const RULES_VERSION = "0.43.0";
+export const READABLE_RULES_VERSIONS = ["0.35.0", "0.36.0", "0.37.0", "0.38.0", "0.39.0", "0.40.0", "0.41.0", "0.42.0", RULES_VERSION];
 export const ABILITIES = [
     { id: "ability_government", label: "Governo" },
     { id: "ability_economy", label: "Economia" },

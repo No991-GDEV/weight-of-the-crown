@@ -165,7 +165,7 @@ export class DefinitionEditor extends Base {
         this.definitionId = definitionId ?? `definition_${uid()}`;
         editors.add(this);
         const s = getState(realm.actor), d = (kind === "activity" ? s.activityDefinitions : s.projects)[this.definitionId], outcome = d ? definitionOutcome(d) : { resources: {}, effects: {}, costs: {} };
-        this.repeatable = d?.repeatable ?? true;
+        this.repeatable = d?.repeatable === true;
         this.featTags = d?.featTags ? [...d.featTags] : [];
         this.fields = { name: d?.name ?? "", description: d?.description ?? "", skillId: d?.skillId ?? "", dc: String(d?.dc ?? ""), suitability: String(d?.suitability ?? 0), stages: d?.stages ?? "", benefit: d?.benefit ?? "", ...Object.fromEntries(QUEST_DEGREES.map(degree => [`${degree}Text`, d?.resultTexts?.[degree] ?? ""])), requiresCheck: String(d ? d.requiresCheck !== false : kind === "activity") };
         this.costs = Object.fromEntries(RESOURCES.map(r => [r.id, String(outcome.costs?.[r.id] ?? 0)]));

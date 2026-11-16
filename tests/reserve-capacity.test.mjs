@@ -14,7 +14,7 @@ function fixture(){
  const actor={id:'capacity',name:'Ensaio',type:'party',getFlag:()=>store.state,testUserPermission:u=>u.isGM||u.id===owner.id,async update(patch){for(const[path,value]of Object.entries(patch)){const parts=path.replace('flags.weight-of-the-crown.state.','').split('.');let at=store.state;for(const p of parts.slice(0,-1))at=at[p]??={};const key=parts.at(-1);if(key.startsWith('-='))delete at[key.slice(2)];else at[key]=structuredClone(value);}return this;}};
  const cmd=(c,user=gm)=>executeRealmCommand(actor,user,c,`capacity_${++n}`);
  const define=(id='warehouse',outcome={resources:{},effects:{storage:effect()}},kind='project')=>cmd({action:'definition.save',kind,definitionId:id,fields:{name:id,description:'',skillId:'',dc:'',suitability:'0',stages:'',benefit:'',requiresCheck:'false'},durationWeeks:1,repeatable:true,outcome});
- const complete=(id='warehouse',kind='project')=>cmd({action:kind==='project'?'project.complete':'quest.complete',[kind==='project'?'projectId':'questId']:id,advance:false,confirmed:true});
+ const complete=(id='warehouse',kind='project')=>cmd({action:kind==='project'?'project.complete':'quest.complete',[kind==='project'?'projectId':'questId']:id,advance:false,confirmed:true,expectedRunId:store.state.activityDefinitions[id]?.quest?.runId??null});
  return{store,cmd,define,complete};
 }
 test('sem novos efeitos preserva o teto, JSON antigo e campo legado',()=>{
@@ -57,7 +57,7 @@ test('se recompensa ainda não couber, obra, recursos e calendário permanecem i
  const f=fixture();await f.define('warehouse',{resources:{res_wood:13},effects:{storage:effect()}});const before=JSON.stringify(f.store.state);await assert.rejects(f.complete(),/capacidade/);assert.equal(JSON.stringify(f.store.state),before);
 });
 test('Quest repetida não multiplica efeito e desativá-lo restaura o limite',async()=>{
- const f=fixture();await f.define('permit',{resources:{},effects:{storage:effect()}},'activity');await f.complete('permit','activity');await f.cmd({action:'quest.repeat',questId:'permit',confirmed:true});await f.complete('permit','activity');assert.equal(resourceSummary(f.store.state).capacity,20);
+ const f=fixture();await f.define('permit',{resources:{},effects:{storage:effect()}},'activity');await f.complete('permit','activity');await f.complete('permit','activity');assert.equal(resourceSummary(f.store.state).capacity,20);
  await f.cmd({action:'effect.save',scope:'realm',effect:effect({id:'temporary',value:5})});assert.equal(resourceSummary(f.store.state).capacity,25);await f.cmd({action:'effect.delete',scope:'realm',effectId:'temporary'});assert.equal(resourceSummary(f.store.state).capacity,20);
 });
 test('talento só amplia quando escolhido e uma vez por origem',async()=>{

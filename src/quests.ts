@@ -1,4 +1,13 @@
 import {isRecord, type Definition, type Degree, type RealmState} from "./core.js";
+import { safeId } from "./roles.js";
+import type { QuestProgress } from "./management.js";
+
+export function completedQuestRun(state: RealmState, definitionId: string, runId: string): { definitionId: string; name: string; progress: QuestProgress } {
+  safeId(runId);
+  const run = state.definitionRuns?.[runId];
+  if (!isRecord(run) || run.definitionId !== definitionId || typeof run.name !== "string" || !isRecord(run.progress) || run.progress.status !== "completed") throw new Error("Registro concluído não encontrado para esta Quest.");
+  return run as unknown as { definitionId: string; name: string; progress: QuestProgress };
+}
 
 export const QUEST_DEGREES = ["criticalSuccess", "success", "failure", "criticalFailure"] as const;
 export const QUEST_RESULT_FIELDS = QUEST_DEGREES.map(degree => `${degree}Text`);

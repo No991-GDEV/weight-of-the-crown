@@ -37,15 +37,16 @@ export function realmView(state, canEdit, isGM, extra = {}) {
     for (const run of Object.values(state.definitionRuns ?? {}))
         if (isRecord(run) && typeof run.definitionId === "string")
             runCounts.set(run.definitionId, (runCounts.get(run.definitionId) ?? 0) + 1);
-    const definitionView = (d, kind, archived = false) => {
+    const definitionView = (d, kind, bindingRunId) => {
+        const archived = !!bindingRunId;
         const q = archived ? questProgress({ ...state, activityDefinitions: { [d.id]: d } }, d.id) : questProgress(state, d.id, kind), configured = definitionOutcome(d);
         const outcome = q.status === "completed" ? { resources: q.grantedResources ?? {}, effects: {}, costs: {} } : configured;
         const pastRunsCount = runCounts.get(d.id) ?? 0;
         const responsible = q.status === "completed" && q.responsibleActorUuid !== undefined ? q.responsibleActorUuid : d.actorUuid;
-        const canAssign = !archived && q.status !== "completed" && (kind === "activity" ? (extra.canAssignQuests ?? canEdit) && (isGM || !d.actorUuid || !!extra.ownedActorUuids?.includes(d.actorUuid)) : canEdit);
-        return { ...d, archived, canAssign, openQuestCount: responsible && q.status !== "completed" ? `${openQuestCount(state, responsible)}/2` : null,
+        const canAssign = kind === "activity" ? (extra.canAssignQuests ?? canEdit) && (isGM || !responsible || !!extra.ownedActorUuids?.includes(responsible)) : !archived && canEdit;
+        return { ...d, archived, bindingRunId, canAssign, openQuestCount: responsible && q.status !== "completed" ? `${openQuestCount(state, responsible)}/2` : null,
             resultLabel: q.result ? DEGREE_LABELS[q.result] : "Resultado não informado", resultClass: q.result ?? "unreported", resultNarrative: q.resultText !== undefined ? q.resultText : resultNarrative(d, q.result),
-            repeatable: d.repeatable !== false, ...actorView(responsible), ...q, kind, key: `${kind}:${d.id}`, isProject: kind === "project", requiresCheck: d.requiresCheck !== false && !!d.skillId && d.dc !== null,
+            repeatable: d.repeatable === true, ...actorView(responsible), ...q, kind, key: `${kind}:${d.id}`, isProject: kind === "project", requiresCheck: d.requiresCheck !== false && !!d.skillId && d.dc !== null,
             skillLabel: SKILLS.find(s => s.id === d.skillId)?.label ?? "Sem teste", durationLabel: `${q.durationWeeks} ${q.durationWeeks === 1 ? "semana" : "semanas"}`, questStatus: { pending: "Pendente", inProgress: "Em andamento", completed: "Concluída" }[q.status], questPending: q.status === "pending", questCompleted: q.status === "completed", canComplete: q.status !== "completed" || !q.timeCounted,
             pastRunsCount, pastRunsLabel: pastRunsCount ? `${pastRunsCount} ${pastRunsCount === 1 ? "execução anterior" : "execuções anteriores"}` : "",
             rewardLabels: RESOURCES.filter(r => (outcome.resources[r.id] ?? 0) > 0).map(r => ({ label: r.label, value: outcome.resources[r.id] })),
@@ -58,7 +59,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
             return [];
         const d = { id: raw.definitionId, name: raw.name, description: typeof raw.description === "string" ? raw.description : "", skillId: null, dc: null, suitability: 0, stages: "", benefit: "", quest: raw.progress };
         try {
-            return [{ ...definitionView(d, "activity", true), key: `run:${runId}`, repeatable: false, canComplete: false, canAssign: false, archived: true }];
+            return [{ ...definitionView(d, "activity", runId), key: `run:${runId}`, repeatable: false, canComplete: false, archived: true }];
         }
         catch {
             return [];
@@ -112,7 +113,7 @@ export function realmView(state, canEdit, isGM, extra = {}) {
     for (const skill of SKILLS)
         labels[`skills.${skill.id}.rank`] = `Treinamento · ${skill.label}`;
     const operations = Object.values(state.operations).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30).map(o => {
-        const binding = o.path?.endsWith(".actorUuid") || o.path?.endsWith(".commanderUuid");
+        const binding = o.path?.endsWith(".actorUuid") || o.path?.endsWith(".commanderUuid") || o.path?.endsWith(".responsibleActorUuid");
         let summary = o.detail ?? "Definição atualizada";
         if (o.kind === "field")
             summary = binding ? `${typeof o.before === "string" ? actorView(o.before).actorName : "Sem responsável"} → ${typeof o.after === "string" ? actorView(o.after).actorName : "Sem responsável"}` : `${o.before ?? "—"} → ${o.after ?? "—"}`;

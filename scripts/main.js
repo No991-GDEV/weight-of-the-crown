@@ -1,3 +1,5 @@
+import { completedQuestRun } from "./quests.js";
+import { filterTaskGroups } from "./task-browser.js";
 import { resolveArmy, armyView } from "./army.js";
 import { CATALOG_VERSION } from "./feat-catalog.js";
 import { MODULE_ID, SKILLS, ABILITIES, createRealmState, escapeHTML, kingdomHeroPoints } from "./core.js";
@@ -20,7 +22,7 @@ export class RealmApplication extends HbsApplication {
         classes: ["twoc", "twoc-realm"],
         position: { width: 1120, height: 840 }, window: { title: "The Weight of the Crown", resizable: true },
         actions: {
-            section: RealmApplication.section, retryOperation: RealmApplication.retryOperation, heroPoint: RealmApplication.heroPoint,
+            section: RealmApplication.section, retryOperation: RealmApplication.retryOperation, heroPoint: RealmApplication.heroPoint, taskGroups: RealmApplication.taskGroups,
             exportRealm: RealmApplication.exportRealm,
             importRealm: RealmApplication.importRealm,
             ownership: RealmApplication.ownership,
@@ -40,6 +42,9 @@ export class RealmApplication extends HbsApplication {
     static PARTS = { body: { template: "modules/weight-of-the-crown/templates/realm.hbs", scrollable: [".twoc-content"] } };
     actor;
     activeSection = "realm";
+    taskSearch = "";
+    collapsedTaskGroups = new Set();
+    searchFocus = null;
     pendingFields = new Map();
     pendingSaves = new Set();
     busyRolls = new Set();
@@ -74,6 +79,11 @@ export class RealmApplication extends HbsApplication {
     get title() { return `${this.actor.name} · The Weight of the Crown`; }
     get canAssignQuests() { return game.user.isGM || this.actor.testUserPermission(game.user, 2); }
     get canEdit() { return game.user.isGM || this.actor.testUserPermission(game.user, 3); }
+    static taskGroups(_event, button) {
+        for (const id of ["quests", "projects", "completed"])
+            button.dataset.mode === "collapse" ? this.collapsedTaskGroups.add(id) : this.collapsedTaskGroups.delete(id);
+        filterTaskGroups(this.element, this.taskSearch, this.collapsedTaskGroups);
+    }
     static async heroPoint(_event, button) {
         if (!game.user.isGM || this.heroPointsPending)
             return;
@@ -106,7 +116,7 @@ export class RealmApplication extends HbsApplication {
                 throw new Error("Você não tem acesso a este reino.");
             const state = getState(this.actor);
             const completedUuids = [...Object.values(state.activityDefinitions), ...Object.values(state.projects)].map(d => d.quest?.responsibleActorUuid).concat(Object.values(state.definitionRuns ?? {}).map((r) => r?.progress?.responsibleActorUuid)).filter((u) => typeof u === "string" && !!u);
-            const historyUuids = Object.values(state.operations).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30).filter(o => o.path?.endsWith(".actorUuid") || o.path?.endsWith(".commanderUuid")).flatMap(o => [o.before, o.after]).filter((u) => typeof u === "string" && !!u);
+            const historyUuids = Object.values(state.operations).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 30).filter(o => o.path?.endsWith(".actorUuid") || o.path?.endsWith(".commanderUuid") || o.path?.endsWith(".responsibleActorUuid")).flatMap(o => [o.before, o.after]).filter((u) => typeof u === "string" && !!u);
             const uuids = [...new Set([...Object.values(state.activityDefinitions), ...Object.values(state.projects), ...kingdomRoles(state), ...Object.values(state.militaryUnits ?? {}).map(u => ({ actorUuid: u.commanderUuid }))].map(d => d.actorUuid).filter((u) => !!u).concat(historyUuids, completedUuids))];
             const actors = {};
             await Promise.all(uuids.map(async (uuid) => {
@@ -149,10 +159,24 @@ export class RealmApplication extends HbsApplication {
         if (this.element?.querySelector(".twoc-roles-panel"))
             this.expandedRoleDetails = new Set([...this.element.querySelectorAll("[data-role-details][open]")].map((e) => e.dataset.roleDetails));
         const active = this.element?.ownerDocument.activeElement;
+        this.searchFocus = active?.hasAttribute("data-task-search") ? { start: active.selectionStart, end: active.selectionEnd } : null;
         this.focusedField = active?.dataset?.field && this.element.contains(active) ? { path: active.dataset.field, start: active.selectionStart, end: active.selectionEnd } : null;
         await super._preRender(context, options);
     }
     async _onRender() {
+        const root = this.element, search = root.querySelector("[data-task-search]");
+        if (search) {
+            search.value = this.taskSearch;
+            search.addEventListener("input", () => { this.taskSearch = search.value; filterTaskGroups(root, this.taskSearch, this.collapsedTaskGroups, true); });
+            if (this.searchFocus) {
+                search.focus({ preventScroll: true });
+                search.setSelectionRange(this.searchFocus.start, this.searchFocus.end);
+            }
+        }
+        for (const group of root.querySelectorAll("[data-task-group]"))
+            group.querySelector("summary")?.addEventListener("click", event => { if (event.target.closest("button"))
+                return; group.open ? this.collapsedTaskGroups.add(group.dataset.taskGroup) : this.collapsedTaskGroups.delete(group.dataset.taskGroup); });
+        filterTaskGroups(root, this.taskSearch, this.collapsedTaskGroups);
         for (const details of this.element.querySelectorAll("[data-definition-details]"))
             details.open = this.expandedDefinitions.has(details.dataset.definitionDetails);
         for (const details of this.element.querySelectorAll("[data-role-details]"))
@@ -213,7 +237,7 @@ export class RealmApplication extends HbsApplication {
             throw new Error("Você não tem acesso a esse personagem.");
         return actor;
     }
-    async bindResponsible(kind, definitionId, uuid) {
+    async bindResponsible(kind, definitionId, uuid, runId) {
         if (!definitionId || (kind !== "activity" && kind !== "project" && kind !== "role" && kind !== "military"))
             throw new Error("Selecione uma Quest, construção, cargo ou unidade.");
         if (!(kind === "activity" ? this.canAssignQuests : this.canEdit))
@@ -223,7 +247,14 @@ export class RealmApplication extends HbsApplication {
         const state = getState(this.actor);
         let currentUuid;
         let label = "";
-        if (kind === "role") {
+        if (runId) {
+            if (kind !== "activity")
+                throw new Error("Registro concluído inválido.");
+            const run = completedQuestRun(state, definitionId, runId);
+            currentUuid = run.progress.responsibleActorUuid;
+            label = run.name;
+        }
+        else if (kind === "role") {
             const role = kingdomRoles(state).find(r => r.id === definitionId);
             if (!role)
                 throw new Error("Cargo não encontrado.");
@@ -241,7 +272,7 @@ export class RealmApplication extends HbsApplication {
             const def = (kind === "activity" ? state.activityDefinitions : state.projects)[definitionId];
             if (!def)
                 throw new Error("Atividade não encontrada.");
-            currentUuid = def.actorUuid;
+            currentUuid = def.quest?.status === "completed" ? def.quest.responsibleActorUuid ?? def.actorUuid : def.actorUuid;
             label = def.name;
         }
         if (uuid && currentUuid && currentUuid !== uuid) {
@@ -257,7 +288,7 @@ export class RealmApplication extends HbsApplication {
             else if (kind === "military")
                 await submitRealmCommand(this.actor, { action: "military.bind", unitId: definitionId, actorUuid: uuid });
             else
-                await submitRealmCommand(this.actor, { action: "binding.save", kind, definitionId, actorUuid: uuid });
+                await submitRealmCommand(this.actor, { action: "binding.save", kind, definitionId, actorUuid: uuid, ...(runId ? { runId } : {}) });
             this.status = "Salvo";
         })();
         this.pendingSaves.add(task);
@@ -285,7 +316,7 @@ export class RealmApplication extends HbsApplication {
             await this.render({ force: true });
             return;
         }
-        await this.bindResponsible(slot.dataset.dropKind, slot.dataset.dropDefinition, actor.uuid);
+        await this.bindResponsible(slot.dataset.dropKind, slot.dataset.dropDefinition, actor.uuid, slot.dataset.runId);
     }
     static async chooseActor(_event, button) {
         if (!(button.dataset.kind === "activity" ? this.canAssignQuests : this.canEdit))
@@ -299,7 +330,7 @@ export class RealmApplication extends HbsApplication {
             const options = actors.map((a) => `<option value="${escapeHTML(a.uuid)}">${escapeHTML(a.name)}</option>`).join("");
             const answer = await DialogV2.input({ window: { title: "Escolher responsável" }, content: `<label>Personagem<select name="actorUuid">${options}</select></label>`, ok: { label: "Vincular" }, rejectClose: false });
             if (answer)
-                await this.bindResponsible(button.dataset.kind, button.dataset.id, String(answer.actorUuid));
+                await this.bindResponsible(button.dataset.kind, button.dataset.id, String(answer.actorUuid), button.dataset.runId);
         }
         catch (error) {
             notifyError(error);
@@ -318,7 +349,7 @@ export class RealmApplication extends HbsApplication {
     }
     static async removeActor(_event, button) {
         try {
-            await this.bindResponsible(button.dataset.kind, button.dataset.id, null);
+            await this.bindResponsible(button.dataset.kind, button.dataset.id, null, button.dataset.runId);
         }
         catch (error) {
             notifyError(error);

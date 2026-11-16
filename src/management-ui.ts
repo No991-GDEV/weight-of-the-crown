@@ -184,7 +184,7 @@ export async function managementAction(app: RealmApplication, op: string | undef
         const q = questProgress(state, button.dataset.id);
         if (q.timeCounted) return;
         const answer = await input("Concluir Quest", `<label>Resultado da Quest<select name="result"><option value="">Apenas concluir / ainda não informado</option><option value="success">Sucesso</option>${state.activityDefinitions[button.dataset.id]?.requiresCheck!==false?'<option value="criticalSuccess">Sucesso crítico no teste decisivo</option>':""}<option value="failure">Falha</option><option value="criticalFailure">Falha crítica</option></select></label><p><strong>${escapeHTML(state.activityDefinitions[button.dataset.id]?.name)}</strong> · ${q.durationWeeks} semana(s)</p><label>Calendário<select name="advance"><option value="yes">Avançar ${q.durationWeeks} semana(s) ao confirmar</option><option value="no">Manter a semana atual</option></select></label><p>Semana atual: ${currentWeek(state)}</p>`, "Confirmar conclusão"); if (!answer) return;
-        await submitRealmCommand(app.actor, { action: "quest.complete", questId: button.dataset.id, advance: answer.advance === "yes", confirmed: true, expectedDuration: q.durationWeeks, ...(answer.result ? {result:String(answer.result)} : {}) }); break;
+        await submitRealmCommand(app.actor, { action: "quest.complete", questId: button.dataset.id, advance: answer.advance === "yes", confirmed: true, expectedDuration: q.durationWeeks, expectedRunId:q.runId??null, ...(answer.result ? {result:String(answer.result)} : {}) }); break;
       }
     }
     await app.render({ force: true });

@@ -461,3 +461,15 @@
 
 .twoc .twoc-tactic-description,.twoc .twoc-tactic-description :is(p,li,div,span,strong,em),.twoc .twoc-tactic-preview>ul{color:#e8e1e8}
 .twoc .twoc-tactic-description hr{border-color:#77646f}
+
+.twoc .twoc-task-toolbar{display:flex;gap:6px;align-items:center;margin:0 0 18px}
+.twoc .twoc-task-search{display:flex;align-items:center;gap:8px;flex:1;min-width:0;padding:0 10px;border:1px solid #d8c8b9;border-radius:5px;background:#fcfaf6;color:#a18a98}
+.twoc .twoc-task-search input{border:0;background:transparent;box-shadow:none;height:34px;width:100%;min-width:0;color:#4e4150}
+.twoc .twoc-task-toolbar>button{width:32px;height:32px;min-height:0;flex:0 0 32px;padding:0}
+.twoc-task-group>summary{cursor:pointer;list-style:none;margin-bottom:12px}
+.twoc-task-group>summary::-webkit-details-marker{display:none}
+.twoc-task-group:not([open])>summary{margin-bottom:0}
+.twoc-task-group:not([open]) .twoc-group-chevron{transform:rotate(-90deg)}
+.twoc .twoc-group-chevron{font-size:10px;color:#a38a99;transition:transform .12s}
+.twoc-task-count{font-size:11px;color:#9b8592;white-space:nowrap}
+.twoc .twoc-task-card[hidden],.twoc [data-task-no-match][hidden]{display:none!important}

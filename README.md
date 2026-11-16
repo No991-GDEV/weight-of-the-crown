@@ -15,7 +15,7 @@ O manifesto aponta para o ZIP da versão publicada. Depois de instalar, ative **
 - [Baixar o módulo](https://github.com/No991-GDEV/weight-of-the-crown/releases/latest/download/weight-of-the-crown.zip)
 - [Versões publicadas](https://github.com/No991-GDEV/weight-of-the-crown/releases)
 
-**Versão 0.11.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
+**Versão 0.12.0:** validada em Foundry **14.367** e PF2e **8.6.0**. O manifesto mantém os limites declarados de Foundry 14.365–14.367 e PF2e 8.4.0–8.6.0; os alvos anteriores não foram testados.
 
 ## Recursos
 
@@ -37,6 +37,18 @@ O editor possui textos separados para Sucesso crítico, Sucesso, Falha e Falha c
 Cada personagem/NPC pode ter até duas Quests abertas por reino. Pendentes e em andamento contam; concluídas, construções e cargos não contam. Jogadores podem arrastar os Actors que controlam para os slots no resumo, inclusive com permissão de observador do reino. O retrato e a contagem de vagas ficam à esquerda da CD. A autoatribuição não concede acesso aos demais campos do reino.
 
 Quests anteriores sem grau aparecem como Resultado não informado. O Mestre pode preencher os quatro textos e usar Alterar resultado para registrar o grau. Ao repetir uma Quest, a execução anterior permanece em Concluídas.
+
+## Versão 0.12.0 — Quests, vínculos e pesquisa
+
+Pedidos ao Mestre usam o horário sincronizado do Foundry para que relógios diferentes dos jogadores não expirem alterações válidas. Identidade autenticada, permissões e prazo real dos pedidos continuam verificados. **Todos os clientes precisam recarregar após atualizar.**
+
+Jogadores podem vincular personagens/NPCs que controlam a Quests abertas e concluídas, inclusive registros arquivados. Concluídas não ocupam uma das duas vagas abertas por Actor. Alterar o participante de uma execução anterior não reabre a Quest nem altera recursos, calendário ou resultado, e não atribui ninguém à próxima execução.
+
+Quests marcadas como **Repetível** arquivam o resultado em **Concluídas** e deixam a próxima execução em **Quests**, pendente, sem responsável e com as mesmas configurações. O arquivo preserva participante, grau, texto e recursos recebidos naquela execução. Confirmações antigas não concluem uma segunda vez. A repetição é uma opção explícita; registros legados sem essa marca não são convertidos automaticamente.
+
+A barra de pesquisa filtra pelo nome, ignorando caixa e acentos, nos três grupos. Os títulos permitem recolher/expandir cada grupo, e os botões da barra controlam todos. O filtro ocorre no navegador e mantém foco e estado durante as atualizações.
+
+Validação: **275 testes automatizados e 11 cenários nativos**, reprodução do erro anterior com diferença de cinco segundos entre computadores e testes reais com relógios adiantados/atrasados em cinco minutos. Também foram conferidos pesquisa, grupos, repetição e vínculos históricos no Foundry 14.367 / PF2e 8.6.0.
 
 ## Versão 0.11.0 — Táticas e Hero Points
 

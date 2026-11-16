@@ -14,7 +14,7 @@ function fixture(){
  const docs=new Map(['hero','npc','foreign'].map(id=>[`Actor.${id}`,{uuid:`Actor.${id}`,documentName:'Actor',type:id==='hero'?'character':'npc',testUserPermission:(u,p)=>u.isGM||(id==='foreign'?u.id==='other':u.id==='owner')&&p<=3}]));
  const cmd=(c,user=gm,id=`op_${++op}`)=>executeRealmCommand(actor,user,c,id,{resolveActor:async uuid=>docs.get(uuid)??null});
  const texts={criticalSuccess:'APENAS_CRITICO_POSITIVO',success:'APENAS_SUCESSO',failure:'APENAS_FALHA',criticalFailure:'APENAS_CRITICO_NEGATIVO'};
- const define=(id='quest',kind='activity',extra={})=>cmd({action:'definition.save',kind,definitionId:id,fields:{name:id,description:'Objetivo público',skillId:'skill_trade',dc:'15',suitability:'0',stages:'',benefit:'Texto geral antigo',requiresCheck:'true',...Object.fromEntries(QUEST_DEGREES.map(d=>[`${d}Text`,texts[d]])),...extra},durationWeeks:1,repeatable:true,outcome:{resources:{res_wood:1},effects:{}}});
+ const define=(id='quest',kind='activity',extra={})=>cmd({action:'definition.save',kind,definitionId:id,fields:{name:id,description:'Objetivo público',skillId:'skill_trade',dc:'15',suitability:'0',stages:'',benefit:'Texto geral antigo',requiresCheck:'true',...Object.fromEntries(QUEST_DEGREES.map(d=>[`${d}Text`,texts[d]])),...extra},durationWeeks:1,repeatable:false,outcome:{resources:{res_wood:1},effects:{}}});
  const bind=(id,uuid='Actor.hero',user=owner,kind='activity')=>cmd({action:'binding.save',kind,definitionId:id,actorUuid:uuid},user);
  const finish=(id,result='success')=>cmd({action:'quest.complete',questId:id,confirmed:true,advance:false,result});
  return{box,actor,cmd,define,bind,finish,texts};
@@ -50,7 +50,7 @@ test('conclusão antiga preserva texto geral e não inventa grau',async()=>{
  await f.define('quest','activity',{successText:'Novo sucesso'});assert.equal(d.quest.resultText,'Texto geral antigo');
 });
 test('repetição arquiva resultado/responsável e limpa dados da execução nova com merge Foundry',async()=>{
- const f=fixture();await f.define();await f.bind('quest');await f.finish('quest','failure');await f.cmd({action:'quest.repeat',questId:'quest',confirmed:true});
+ const f=fixture();await f.define();await f.bind('quest');await f.finish('quest','failure');f.box.state.activityDefinitions.quest.repeatable=true;await f.cmd({action:'quest.repeat',questId:'quest',confirmed:true});
  const q=f.box.state.activityDefinitions.quest.quest;assert.equal(q.result,undefined);assert.equal(q.resultText,undefined);assert.equal(q.grantedResources,undefined);
  await f.define('quest','activity',{failureText:'Falha futura'});const archived=realmView(f.box.state,true,true).completedDefinitions[0];assert.equal(archived.archived,true);assert.equal(archived.resultNarrative,f.texts.failure);assert.equal(archived.actorUuid,'Actor.hero');
 });
@@ -77,7 +77,7 @@ test('remover vínculo libera vaga; reentrega do mesmo vínculo não gasta outra
  const f=fixture();for(const id of ['a','b','c'])await f.define(id);await f.bind('a');await f.bind('a');await f.bind('b');assert.equal(openQuestCount(f.box.state,'Actor.hero'),2);await f.bind('a',null);await f.bind('c');assert.equal(openQuestCount(f.box.state,'Actor.hero'),2);
 });
 test('reabrir com responsável ocupado exige liberar vaga ou escolher execução sem responsável',async()=>{
- const f=fixture();for(const id of ['a','b','c'])await f.define(id);await f.bind('a');await f.finish('a');await f.bind('b');await f.bind('c');await assert.rejects(f.cmd({action:'quest.repeat',questId:'a',confirmed:true}),/duas Quests/);
+ const f=fixture();for(const id of ['a','b','c'])await f.define(id);await f.bind('a');await f.finish('a');f.box.state.activityDefinitions.a.repeatable=true;await f.bind('b');await f.bind('c');await assert.rejects(f.cmd({action:'quest.repeat',questId:'a',confirmed:true}),/duas Quests/);
  await f.cmd({action:'quest.repeat',questId:'a',confirmed:true,keepActor:false});assert.equal(f.box.state.activityDefinitions.a.actorUuid,null);assert.equal(openQuestCount(f.box.state,'Actor.hero'),2);
 });
 test('vínculos antigos acima do limite são preservados, mas não permitem nova atribuição',async()=>{
@@ -89,4 +89,32 @@ test('avatar/slot estão no resumo antes da CD e jogador vê somente controles d
 });
 test('badges de concluída usam recursos registrados, não recompensa editada depois',async()=>{
  const f=fixture();await f.define();await f.finish('quest');f.box.state.activityDefinitions.quest.outcome.resources.res_wood=99;assert.equal(realmView(f.box.state,true,true).completedDefinitions[0].rewardLabels[0].value,1);
+});
+
+test('concluir repetível arquiva resultado e deixa mesma Quest pendente, configurada e sem responsável',async()=>{
+ const f=fixture();await f.define();f.box.state.activityDefinitions.quest.repeatable=true;await f.bind('quest');const original=structuredClone(f.box.state.activityDefinitions.quest);
+ await f.cmd({action:'quest.complete',questId:'quest',confirmed:true,advance:false,result:'success',expectedRunId:null});const d=f.box.state.activityDefinitions.quest,r=Object.values(f.box.state.definitionRuns)[0];
+ assert.equal(d.quest.status,'pending');assert.equal(d.actorUuid,null);assert.equal(d.quest.result,undefined);assert.equal(d.quest.resultText,undefined);assert.equal(d.quest.grantedResources,undefined);assert.equal(r.progress.status,'completed');assert.equal(r.progress.resultText,f.texts.success);assert.equal(r.progress.responsibleActorUuid,'Actor.hero');
+ for(const key of ['name','description','skillId','dc','suitability','stages','benefit','resultTexts','outcome','repeatable'])assert.deepEqual(d[key],original[key]);assert.equal(f.box.state.resources.res_wood,1);assert.equal(openQuestCount(f.box.state,'Actor.hero'),0);const v=realmView(f.box.state,true,true);assert.equal(v.actions.length,1);assert.equal(v.completedDefinitions.length,1);
+});
+test('cliques repetidos na conclusão não repetem pagamento; nova execução exige novo identificador',async()=>{
+ const f=fixture();await f.define();f.box.state.activityDefinitions.quest.repeatable=true;const c={action:'quest.complete',questId:'quest',confirmed:true,advance:false,result:'failure',expectedRunId:null};
+ await f.cmd(c,gm,'first_completion');await f.cmd(c,gm,'first_completion');await assert.rejects(f.cmd(c),/execução/);assert.equal(f.box.state.resources.res_wood,1);assert.equal(Object.keys(f.box.state.definitionRuns).length,1);
+ await f.cmd({...c,expectedRunId:f.box.state.activityDefinitions.quest.quest.runId});assert.equal(f.box.state.resources.res_wood,2);assert.equal(Object.keys(f.box.state.definitionRuns).length,2);
+});
+test('jogador pode vincular própria ficha em concluída, sem reabrir, cobrar ou ocupar vaga',async()=>{
+ const f=fixture();for(const id of ['a','b','done'])await f.define(id);await f.bind('a');await f.bind('b');await f.finish('done','failure');const resources=structuredClone(f.box.state.resources),q=structuredClone(f.box.state.activityDefinitions.done.quest),week=f.box.state.calendar.ordinalWeek;
+ await f.bind('done');const next=f.box.state.activityDefinitions.done.quest;assert.deepEqual({...next,responsibleActorUuid:q.responsibleActorUuid},q);assert.equal(next.responsibleActorUuid,'Actor.hero');assert.equal(openQuestCount(f.box.state,'Actor.hero'),2);assert.deepEqual(f.box.state.resources,resources);assert.equal(f.box.state.calendar.ordinalWeek,week);
+ await assert.rejects(f.bind('done','Actor.foreign'),/controla/);await f.bind('done',null);assert.equal(next.responsibleActorUuid,null);assert.equal(f.box.state.activityDefinitions.done.quest.responsibleActorUuid,null);
+});
+test('vínculo de execução arquivada altera só o participante daquele registro',async()=>{
+ const f=fixture();await f.define();f.box.state.activityDefinitions.quest.repeatable=true;await f.cmd({action:'quest.complete',questId:'quest',confirmed:true,advance:false,result:'criticalSuccess',expectedRunId:null});const runId=Object.keys(f.box.state.definitionRuns)[0],before=structuredClone(f.box.state.activityDefinitions.quest),resources=structuredClone(f.box.state.resources);
+ const bind=(actorUuid,user=owner)=>f.cmd({action:'binding.save',kind:'activity',definitionId:'quest',runId,actorUuid},user);await bind('Actor.hero');assert.deepEqual(f.box.state.activityDefinitions.quest,before);assert.equal(f.box.state.definitionRuns[runId].progress.responsibleActorUuid,'Actor.hero');assert.equal(f.box.state.definitionRuns[runId].progress.result,'criticalSuccess');assert.deepEqual(f.box.state.resources,resources);
+ await assert.rejects(bind('Actor.foreign'),/controla/);await bind('Actor.foreign',gm);await assert.rejects(bind(null),/controlador/);await assert.rejects(f.cmd({action:'binding.save',kind:'activity',definitionId:'wrong',runId,actorUuid:'Actor.hero'},owner),/Registro/);
+});
+test('registro concluído pode receber vínculo mesmo depois de excluir a definição original',async()=>{
+ const f=fixture();await f.define();f.box.state.activityDefinitions.quest.repeatable=true;await f.cmd({action:'quest.complete',questId:'quest',confirmed:true,advance:false,expectedRunId:null});const runId=Object.keys(f.box.state.definitionRuns)[0];await f.cmd({action:'definition.delete',kind:'activity',definitionId:'quest',confirmed:true});await f.cmd({action:'binding.save',kind:'activity',definitionId:'quest',runId,actorUuid:'Actor.hero'},owner);assert.equal(realmView(f.box.state,false,false,{canAssignQuests:true,ownedActorUuids:['Actor.hero']}).completedDefinitions[0].canAssign,true);
+});
+test('slots de concluídas e arquivos oferecem vínculo apenas ao próprio controlador',async()=>{
+ const f=fixture();await f.define();await f.finish('quest');let v=realmView(f.box.state,false,false,{canAssignQuests:true,ownedActorUuids:['Actor.hero']});assert.equal(v.completedDefinitions[0].canAssign,true);await f.bind('quest','Actor.foreign',gm);v=realmView(f.box.state,false,false,{canAssignQuests:true,ownedActorUuids:['Actor.hero']});assert.equal(v.completedDefinitions[0].canAssign,false);
 });
